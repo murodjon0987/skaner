@@ -527,20 +527,39 @@
             <input type="hidden" id="productImage" />
           </div>
         </div>
+
+        <!-- Shablonlar va O'xshash Mahsulotlar (Tezkor to'ldirish) -->
+        <div class="template-chips-section" id="templateChipsSection" style="display:none;">
+          <div class="template-chips-label">⚡ O'xshash mahsulot shablonlari (1 bosishda to'ldirish):</div>
+          <div class="template-chips-list" id="templateChipsList"></div>
+        </div>
+
         <div class="form-group">
           <label>Mahsulot nomi *</label>
-          <input type="text" id="productName" placeholder="Masalan: Coca-Cola 500ml" />
+          <input type="text" id="productName" placeholder="Masalan: Coca-Cola 500ml" oninput="onProductNameInput(this.value)" />
         </div>
         <div class="form-group">
-          <label>Shtrix-kod *</label>
+          <label>Shtrix-kod / QR-kod *</label>
           <div class="barcode-input-row">
             <input type="text" id="productBarcode" placeholder="8600001234567" inputmode="numeric" />
-            <button class="scan-barcode-btn" onclick="scanForModal()">Skaner</button>
+            <button class="scan-barcode-btn" type="button" onclick="scanForModal()">Skaner</button>
           </div>
         </div>
+
+        <!-- Mavjud mahsulotga qo'shimcha shtrix-kod sifatida biriktirish -->
+        <div class="link-existing-box" id="linkExistingBox" style="display:none;">
+          <div class="link-existing-title">💡 Ushbu kodni mavjud mahsulotga biriktirish:</div>
+          <button type="button" class="btn-link-barcode" id="btnLinkBarcode" onclick="linkCurrentBarcodeToProduct()">
+            🔗 <span id="btnLinkBarcodeText">"Suv 0.5L" ga biriktirish</span>
+          </button>
+        </div>
+
         <div class="form-row">
           <div class="form-group">
-            <label>Narxi (so'm) *</label>
+            <div class="label-with-hint">
+              <label>Narxi (so'm) *</label>
+              <span class="price-hint-badge" id="priceHintBadge" style="display:none;"></span>
+            </div>
             <input type="number" id="productPrice" placeholder="15000" min="0" />
           </div>
           <div class="form-group">
@@ -549,17 +568,30 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Kategoriya</label>
-          <select id="productCategory">
-            <option value="ichimlik">Ichimliklar</option>
-            <option value="oziq">Oziq-ovqat</option>
-            <option value="shirinlik">Shirinliklar</option>
-            <option value="sut">Sut mahsulotlari</option>
-            <option value="uy">Uy-ro'zg'or</option>
-            <option value="gigiyena">Gigiyena</option>
-            <option value="boshqa">Boshqa</option>
+          <label>Toifa (Kategoriya)</label>
+          <select id="productCategory" onchange="onCategorySelectChange(this.value)">
+            <option value="suv_05">💧 Suv 0.5L</option>
+            <option value="suv_10">💧 Suv 1L - 1.5L</option>
+            <option value="suv_50">💧 Suv 5L</option>
+            <option value="ichimlik">🥤 Gazli ichimliklar & sharbatlar</option>
+            <option value="non">🍞 Non va pishiriqlar</option>
+            <option value="shirinlik">🍫 Shirinliklar & konfetlar</option>
+            <option value="sut">🥛 Sut va sut mahsulotlari</option>
+            <option value="oziq">🥫 Oziq-ovqat mahsulotlari</option>
+            <option value="gigiyena">🧼 Gigiyena va kosmetika</option>
+            <option value="uy">🏠 Uy-ro'zg'or buyumlari</option>
+            <option value="boshqa">📦 Boshqa mahsulotlar</option>
           </select>
         </div>
+
+        <!-- Barcha shu toifadagi mahsulotlar narxini ham yangilash -->
+        <div class="sync-category-wrap" id="syncCategoryWrap" style="display:none;">
+          <label class="sync-checkbox-label">
+            <input type="checkbox" id="syncCategoryCheckbox" checked />
+            <span id="syncCategoryLabel">Shu toifadagi barcha mahsulotlar narxini ham bir vaqtda yangilash</span>
+          </label>
+        </div>
+
         <input type="hidden" id="editProductId" />
       </div>
       <div class="modal-footer">

@@ -15,10 +15,11 @@
 //  GLOBAL STATE
 // ─────────────────────────────────────────────
 const APP = {
-  cart: [],             // { id, barcode, name, price, qty, category }
+  cart: [],             // { id, barcode, barcodes:[], name, price, qty, category }
   products: [],         // barcha mahsulotlar
   bills: [],            // cheklar tarixi
   settings: {},         // sozlamalar
+  categoryPrices: {},   // toifalar bo'yicha standart narxlar (avtomatik eslab qolish)
   currentPage: 'scanner',
   cameraStream: null,
   scanning: false,
@@ -32,7 +33,112 @@ const APP = {
   editingProductId: null,
   foundProduct: null,
   currentBillForPrint: null,
+  _currentLinkTargetId: null,
 };
+
+// Toifalar uchun standart narxlar (bitta mahsulot kiritilganda keyingilar avtomatik narxlanadi)
+const DEFAULT_CATEGORY_PRICES = {
+  suv_05: 3000,
+  suv_10: 5000,
+  suv_50: 12000,
+  ichimlik: 7000,
+  non: 4000,
+  shirinlik: 10000,
+  sut: 9000,
+  oziq: 15000,
+  gigiyena: 18000,
+  uy: 20000,
+  boshqa: 5000,
+};
+
+const CATEGORY_NAMES = {
+  suv_05: '💧 Suv 0.5L',
+  suv_10: '💧 Suv 1L - 1.5L',
+  suv_50: '💧 Suv 5L',
+  ichimlik: '🥤 Gazli ichimliklar & sharbatlar',
+  non: '🍞 Non va pishiriqlar',
+  shirinlik: '🍫 Shirinliklar & konfetlar',
+  sut: '🥛 Sut mahsulotlari',
+  oziq: '🥫 Oziq-ovqat mahsulotlari',
+  gigiyena: '🧼 Gigiyena va kosmetika',
+  uy: '🏠 Uy-ro\'zg\'or buyumlari',
+  boshqa: '📦 Boshqa mahsulotlar',
+};
+
+const catEmoji = {
+  suv_05: '💧',
+  suv_10: '💧',
+  suv_50: '💧',
+  ichimlik: '🥤',
+  non: '🍞',
+  shirinlik: '🍫',
+  sut: '🥛',
+  oziq: '🥫',
+  uy: '🏠',
+  gigiyena: '🧼',
+  boshqa: '📦',
+};
+
+/**
+ * Asl Belgisi / GS1 DataMatrix / Raqamli markirovka QR-kodlaridan
+ * mahsulotning asosiy GTIN / EAN-13 kodini ajratib oladi.
+ * Natijada har bir idishning seriya raqami har xil bo'lsa ham,
+ * asosiy tovar kodi barcha idishlar uchun bir xil bo'ladi!
+ */
+function extractProductBarcode(raw) {
+  if (!raw) return '';
+  let str = String(raw).trim();
+  // Nazorat belgilarini (ASCII 0-31, 127) tozalash
+  str = str.replace(/[\x00-\x1F\x7F]/g, '');
+
+  // 1. URL ichidagi kod (masalan: https://aslbelgisi.uz/c/0104780136192003...)
+  const urlMatch = str.match(/(?:01)(\d{14})/);
+  if (urlMatch) {
+    return normalizeGTIN(urlMatch[1]);
+  }
+
+  // 2. Qavsli format: (01)04780136192003(21)...
+  const parenMatch = str.match(/\(01\)(\d{14})/);
+  if (parenMatch) {
+    return normalizeGTIN(parenMatch[1]);
+  }
+
+  // 3. Standart GS1 DataMatrix: 01 bilan boshlanib kamida 16 ta belgi (01 + 14 xonali GTIN)
+  if (str.startsWith('01') && str.length >= 16 && /^\d{16}/.test(str)) {
+    const gtin = str.substring(2, 16);
+    return normalizeGTIN(gtin);
+  }
+
+  // 4. Aynan 14 xonali GTIN bo'lsa
+  if (/^\d{14}$/.test(str)) {
+    return normalizeGTIN(str);
+  }
+
+  return str;
+}
+
+function normalizeGTIN(gtin14) {
+  // 14 xonali GTIN noldan boshlansa (04780136192003), 13 xonali EAN-13 ga o'tkazish
+  if (gtin14.length === 14 && gtin14.startsWith('0')) {
+    return gtin14.substring(1);
+  }
+  return gtin14;
+}
+
+function loadCategoryPrices() {
+  try {
+    const saved = localStorage.getItem('scanpos_category_prices');
+    APP.categoryPrices = saved
+      ? { ...DEFAULT_CATEGORY_PRICES, ...JSON.parse(saved) }
+      : { ...DEFAULT_CATEGORY_PRICES };
+  } catch {
+    APP.categoryPrices = { ...DEFAULT_CATEGORY_PRICES };
+  }
+}
+
+function saveCategoryPrices() {
+  localStorage.setItem('scanpos_category_prices', JSON.stringify(APP.categoryPrices));
+}
 
 // ZXing reader (lazy loaded)
 let zxingReader = null;
@@ -154,24 +260,39 @@ async function lookupBarcodeOnline(barcode) {
 /** categories_tags massividan kategoriya aniqlaymiz */
 function detectCategory(tags, fallback) {
   const str = tags.join(' ').toLowerCase();
-  if (/beverage|drink|water|juice|cola|soda|tea|coffee/.test(str)) return 'ichimlik';
-  if (/milk|dairy|cheese|yogurt/.test(str)) return 'sut';
+  if (/water|suv|вода/.test(str)) {
+    if (/0[.,]5|500/.test(str)) return 'suv_05';
+    if (/1[.,]5|1[.,]0|1l/.test(str)) return 'suv_10';
+    if (/5l|5000/.test(str)) return 'suv_50';
+    return 'suv_05';
+  }
+  if (/beverage|drink|juice|cola|soda|tea|coffee/.test(str)) return 'ichimlik';
+  if (/bread|bakery|flour|non|хлеб/.test(str)) return 'non';
   if (/candy|chocolate|sweet|biscuit|snack|chip|crisp/.test(str)) return 'shirinlik';
-  if (/bread|bakery|cereal|grain|rice|pasta|flour/.test(str)) return 'oziq';
-  if (/cleaning|detergent|household/.test(str)) return 'uy';
-  if (/beauty|cosmetic|shampoo|soap|hygiene/.test(str)) return 'gigiyena';
+  if (/milk|dairy|cheese|yogurt|sut/.test(str)) return 'sut';
+  if (/rice|pasta|grain|cereal|konserva|oziq/.test(str)) return 'oziq';
+  if (/beauty|cosmetic|shampoo|soap|hygiene|gigiyena/.test(str)) return 'gigiyena';
+  if (/cleaning|detergent|household|uy/.test(str)) return 'uy';
   return fallback || 'boshqa';
 }
 
 /** Mahsulot nomi bo'yicha kategoriya taxmin qilish */
 function detectCategoryFromName(name) {
   const n = (name || '').toLowerCase();
-  if (/water|suv|вода|drink|juice|cola|pepsi|sprite|fanta|soda|tea|choy|кофе|coffee|energy|redbull|lipton/.test(n)) return 'ichimlik';
-  if (/milk|sut|сут|молоко|kefir|yogurt|qatiq|cheese|пишлоқ/.test(n)) return 'sut';
-  if (/chocolate|шоколад|candy|konfet|конфет|snicker|twix|kitkat|oreo|cookie|biscuit|chip|crisp|sweet|shirinlik/.test(n)) return 'shirinlik';
-  if (/bread|non|хлеб|rice|guruch|pasta|macaroni|flour|un|cereal|oat/.test(n)) return 'oziq';
-  if (/shampoo|soap|sovun|toothpaste|тиш|дезодорант|deodorant|parfum|atir|cream|крем|lotion/.test(n)) return 'gigiyena';
-  if (/washing|кир|detergent|clean|bleach|domestos|fairy|tide|ariel/.test(n)) return 'uy';
+  // Suvlar (hajmiga qarab)
+  if (/water|suv|вода|aqua|chortoq|montella|hydrolife|nestle|bonaqua|family/.test(n)) {
+    if (/0[.,]5|500\s*ml|05/.test(n)) return 'suv_05';
+    if (/1[.,]5|1[.,]0|1\s*l|1\s*л|1500\s*ml/.test(n)) return 'suv_10';
+    if (/5\s*l|5\s*л|5000\s*ml/.test(n)) return 'suv_50';
+    return 'suv_05'; // standart 0.5 suv
+  }
+  if (/cola|pepsi|sprite|fanta|soda|tea|choy|кофе|coffee|energy|redbull|lipton|flash|сок|sharbat|juice|drink/.test(n)) return 'ichimlik';
+  if (/non|хлеб|lepeshka|patir|lavash|buloqa|bread|toast|батон/.test(n)) return 'non';
+  if (/chocolate|шоколад|candy|konfet|конфет|snicker|twix|kitkat|oreo|cookie|biscuit|chip|crisp|sweet|shirinlik|tort|pirog|pechene/.test(n)) return 'shirinlik';
+  if (/milk|sut|сут|молоко|kefir|yogurt|qatiq|cheese|пишлоқ|qaymoq|tvorog|smetana/.test(n)) return 'sut';
+  if (/rice|guruch|pasta|macaroni|flour|un|cereal|oat|shakar|tuz|yog'|moy|maslo|konserva/.test(n)) return 'oziq';
+  if (/shampoo|soap|sovun|toothpaste|тиш|дезодорант|deodorant|parfum|atir|cream|крем|lotion|gel|balzam/.test(n)) return 'gigiyena';
+  if (/washing|кир|detergent|clean|bleach|domestos|fairy|tide|ariel|poroshok/.test(n)) return 'uy';
   return 'boshqa';
 }
 
@@ -396,9 +517,10 @@ function scanWithZXing() {
 // ─────────────────────────────────────────────
 //  BARCODE HANDLER
 // ─────────────────────────────────────────────
-function handleBarcodeDetected(code) {
-  if (!code) return;
-  code = code.trim();
+function handleBarcodeDetected(rawCode) {
+  if (!rawCode) return;
+  rawCode = String(rawCode).trim();
+  const code = extractProductBarcode(rawCode);
 
   const now = Date.now();
   // Cooldown: bir xil kodni qayta o'qimaslik
@@ -409,6 +531,11 @@ function handleBarcodeDetected(code) {
 
   // Flash effekti
   flashScanner();
+
+  // Agar Asl Belgisi QR-kod bo'lsa
+  if (code !== rawCode) {
+    console.log(`📦 Asl Belgisi QR kod o'qildi: ${rawCode} -> GTIN: ${code}`);
+  }
 
   // ─── Modal uchun skaner rejimi ───
   // scanForModal() chaqirilganda navbatdagi skanlangan kodni modal ga yozamiz
@@ -433,8 +560,8 @@ function handleBarcodeDetected(code) {
     updateScanHint(`✅ ${product.name}`, 'success');
   } else {
     // ❌ Mahalliy bazada topilmadi — internetdan qidiramiz
-    updateScanHint(`🌐 Internet dan qidirilmoqda...`, 'success');
-    showToast(`🌐 Kod: ${code} — internet bazasidan qidirilmoqda...`);
+    updateScanHint(`🌐 ${code} internetdan qidirilmoqda...`, 'success');
+    showToast(`🌐 Kod: ${code} — qidirilmoqda...`);
     vibrateDevice([100, 50, 100]);
 
     // Async internet qidiruv
@@ -442,19 +569,20 @@ function handleBarcodeDetected(code) {
       if (result) {
         // ✅ Internet da topildi — modalni avtomatik to'ldirish
         updateScanHint(`✅ Internetdan topildi: ${result.name}`, 'success');
-        showToast(`✅ "${result.name}" topildi! Narxni kiriting.`);
+        showToast(`✅ "${result.name}" topildi!`);
         vibrateDevice([80, 40, 80]);
-        openAddProductModalWithData(result, code);
+        openAddProductModalWithData(result, code, rawCode);
       } else {
         // ❌ Internetda ham topilmadi
         showProductFoundCard(null, code);
-        updateScanHint(`❌ Kod: ${code} — hech qayerda topilmadi`, 'error');
-        showToast(`❌ "${code}" topilmadi. Qo'lda kiriting.`);
-        openAddProductModalWithData({ name: '', image: null, category: 'boshqa', brand: '' }, code);
+        updateScanHint(`❌ Kod: ${code} — yangi mahsulot`, 'error');
+        showToast(`❌ "${code}" topilmadi. Yangi mahsulot qo'shing.`);
+        openAddProductModalWithData({ name: '', image: null, category: 'suv_05', brand: '' }, code, rawCode);
       }
     }).catch(() => {
       showProductFoundCard(null, code);
-      updateScanHint(`❌ Internet yo'q — qo'lda kiriting`, 'error');
+      updateScanHint(`❌ Internet yo'q — yangi mahsulot`, 'error');
+      openAddProductModalWithData({ name: '', image: null, category: 'suv_05', brand: '' }, code, rawCode);
     });
   }
 
@@ -463,10 +591,30 @@ function handleBarcodeDetected(code) {
 }
 
 function findProductByBarcode(code) {
-  return APP.products.find(p =>
-    p.barcode === code ||
-    p.barcode === code.replace(/^0+/, '') // leading zero ni olib tashlash
-  );
+  if (!code) return null;
+  const cleanCode = extractProductBarcode(code);
+  const rawCode = String(code).trim();
+  const noLead0 = cleanCode.replace(/^0+/, '');
+
+  return APP.products.find(p => {
+    const pClean = extractProductBarcode(p.barcode);
+    const pNoLead0 = pClean ? pClean.replace(/^0+/, '') : '';
+
+    // 1. Asosiy shtrix-kod
+    if (p.barcode === cleanCode || p.barcode === rawCode || p.barcode === noLead0) return true;
+    if (pClean === cleanCode || pClean === noLead0 || pNoLead0 === noLead0) return true;
+
+    // 2. Biriktirilgan qo'shimcha shtrix-kodlar (multi-barcode)
+    if (Array.isArray(p.barcodes) && p.barcodes.length > 0) {
+      for (const b of p.barcodes) {
+        const bClean = extractProductBarcode(b);
+        if (b === cleanCode || b === rawCode || b === noLead0) return true;
+        if (bClean === cleanCode || bClean === noLead0) return true;
+      }
+    }
+
+    return false;
+  });
 }
 
 function flashScanner() {
@@ -492,9 +640,10 @@ function vibrateDevice(pattern) {
 // Manual barcode qidirish
 function searchManualBarcode() {
   const input = document.getElementById('manualBarcodeInput');
-  const code = input.value.trim();
-  if (!code) { showToast('Shtrix-kod kiriting'); return; }
+  const rawCode = input.value.trim();
+  if (!rawCode) { showToast('Shtrix-kod kiriting'); return; }
 
+  const code = extractProductBarcode(rawCode);
   const product = findProductByBarcode(code);
   if (product) {
     showProductFoundCard(product, code);
@@ -621,11 +770,6 @@ function updateCartUI() {
   } else {
     document.getElementById('discountRow').style.display = 'none';
   }
-
-  const catEmoji = {
-    ichimlik: '🥤', oziq: '🍞', shirinlik: '🍬',
-    sut: '🥛', uy: '🏠', gigiyena: '🧴', boshqa: '📦'
-  };
 
   // Render items
   cartList.innerHTML = APP.cart.map((item, idx) => `
@@ -879,7 +1023,8 @@ function showAddProductModal(product = null) {
   document.getElementById('productBarcode').value = product?.barcode || '';
   document.getElementById('productPrice').value = product?.price || '';
   document.getElementById('productStock').value = product?.stock || '0';
-  document.getElementById('productCategory').value = product?.category || 'boshqa';
+  const cat = product?.category || 'suv_05';
+  document.getElementById('productCategory').value = cat;
   document.getElementById('editProductId').value = product?.id || '';
 
   // Rasm holati
@@ -887,38 +1032,75 @@ function showAddProductModal(product = null) {
 
   // Internet badge ni tozalash
   document.getElementById('onlineBadge')?.remove();
+
+  const priceHintBadge = document.getElementById('priceHintBadge');
+  if (priceHintBadge) {
+    if (product?.price) {
+      priceHintBadge.textContent = `${formatPriceShort(product.price)} so'm`;
+      priceHintBadge.style.display = 'inline-block';
+    } else {
+      priceHintBadge.style.display = 'none';
+    }
+  }
+
+  // Tahrirlashda shablonlarni yashiramiz, lekin kategoriya sinxronlashni ko'rsatamiz
+  const templateSec = document.getElementById('templateChipsSection');
+  if (templateSec) templateSec.style.display = 'none';
+  const linkBox = document.getElementById('linkExistingBox');
+  if (linkBox) linkBox.style.display = 'none';
+
+  updateSyncCategoryUI(cat);
+
   openModal('addProductModal');
 }
 
 /**
- * Internet bazasidan topilgan ma'lumotlar bilan modalni ochadi.
- * Foydalanuvchi faqat narxni kiritadi.
+ * Internet bazasidan topilgan yoki yangi shtrix-kod ma'lumotlari bilan modalni ochadi.
  */
-function openAddProductModalWithData(onlineData, barcode) {
+function openAddProductModalWithData(onlineData, barcode, rawCode = '') {
   APP.editingProductId = null;
+  const cleanCode = extractProductBarcode(barcode);
 
   const isFound = !!(onlineData.name && onlineData.name.trim());
 
-  // Modal sarlavhasi: topilgan yoki topilmagan
   document.getElementById('modalTitle').textContent = isFound
     ? '🌐 Internetdan topildi'
     : '➕ Yangi mahsulot qo\'shish';
 
   document.getElementById('productName').value = onlineData.name || '';
-  document.getElementById('productBarcode').value = barcode || '';
-  document.getElementById('productPrice').value = '';
+  document.getElementById('productBarcode').value = cleanCode || '';
   document.getElementById('productStock').value = '0';
-  // Kategoriyani nomdan ham aniqlashga harakat qilamiz
-  const catFromName = onlineData.name ? detectCategoryFromName(onlineData.name) : 'boshqa';
-  document.getElementById('productCategory').value = onlineData.category && onlineData.category !== 'boshqa'
-    ? onlineData.category
-    : catFromName;
   document.getElementById('editProductId').value = '';
+
+  // Toifani aniqlash: nomdan yoki berilgan kategoriyadan
+  let cat = 'suv_05';
+  if (onlineData.name) {
+    cat = detectCategoryFromName(onlineData.name);
+  } else if (onlineData.category && onlineData.category !== 'boshqa') {
+    cat = onlineData.category;
+  }
+  document.getElementById('productCategory').value = cat;
+
+  // Narxni toifa bo'yicha avtomatik to'ldirish
+  const defaultPrice = APP.categoryPrices[cat] || 0;
+  const priceInput = document.getElementById('productPrice');
+  const priceHintBadge = document.getElementById('priceHintBadge');
+
+  if (defaultPrice > 0) {
+    priceInput.value = defaultPrice;
+    if (priceHintBadge) {
+      priceHintBadge.textContent = `⚡ Standart: ${formatPriceShort(defaultPrice)} so'm`;
+      priceHintBadge.style.display = 'inline-block';
+    }
+  } else {
+    priceInput.value = '';
+    if (priceHintBadge) priceHintBadge.style.display = 'none';
+  }
 
   // Rasm
   setModalProductImage(onlineData.image || null);
 
-  // Badge — faqat topilganda ko'rsat
+  // Internet badge
   const existingBadge = document.getElementById('onlineBadge');
   if (existingBadge) existingBadge.remove();
 
@@ -934,18 +1116,193 @@ function openAddProductModalWithData(onlineData, barcode) {
     const badge = document.createElement('div');
     badge.id = 'onlineBadge';
     badge.style.cssText = 'background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:0.8rem;color:#f59e0b;display:flex;align-items:center;gap:6px';
-    badge.innerHTML = `⚠️ <span>Bu mahsulot internet bazasida topilmadi. Nomni o'zingiz kiriting — keyingi skanerlashda avtomatik taniladi!</span>`;
+    badge.innerHTML = `⚠️ <span>Internetda topilmadi. Shablonlardan tanlang yoki nom va narxni kiriting — keyingi skanerlashda avtomatik eslab qoladi!</span>`;
     modalBody.insertBefore(badge, modalBody.firstChild);
   }
 
+  // O'xshash mahsulot shablonlarini yuklash
+  renderTemplateChips(onlineData.name, cat);
+
+  // Kategoriya narxini sinxronlash katakchasini yangilash
+  updateSyncCategoryUI(cat);
+
   openModal('addProductModal');
-  // Topilmagan bo'lsa nom maydoniga, topilgan bo'lsa narx maydoniga fokus
+
+  // Topilmagan bo'lsa nom maydoniga, narx to'ldirilgan bo'lsa miqdorga, aks holda narxga
   setTimeout(() => {
-    const focusEl = isFound
-      ? document.getElementById('productPrice')
-      : document.getElementById('productName');
+    const focusEl = (isFound && defaultPrice > 0)
+      ? document.getElementById('productStock')
+      : (!isFound ? document.getElementById('productName') : document.getElementById('productPrice'));
     focusEl?.focus();
   }, 350);
+}
+
+function renderTemplateChips(name, category) {
+  const container = document.getElementById('templateChipsSection');
+  const list = document.getElementById('templateChipsList');
+  const linkBox = document.getElementById('linkExistingBox');
+  const linkBtnText = document.getElementById('btnLinkBarcodeText');
+  if (!container || !list) return;
+
+  const templates = getSimilarTemplates(name, category);
+
+  if (templates.length === 0) {
+    container.style.display = 'none';
+    if (linkBox) linkBox.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'block';
+  list.innerHTML = templates.map(p => `
+    <button type="button" class="template-chip" onclick="applyProductTemplate('${p.id}')">
+      <span>${catEmoji[p.category] || '📦'} ${escHtml(p.name)}</span>
+      <span class="chip-price">${formatPrice(p.price)}</span>
+    </button>
+  `).join('');
+
+  // Mavjud mahsulotga biriktirish taklifi
+  if (linkBox && linkBtnText && templates.length > 0) {
+    const bestMatch = templates[0];
+    APP._currentLinkTargetId = bestMatch.id;
+    linkBtnText.textContent = `"${bestMatch.name}" ga qo'shimcha kod qilib biriktirish`;
+    linkBox.style.display = 'block';
+  } else if (linkBox) {
+    linkBox.style.display = 'none';
+  }
+}
+
+function getSimilarTemplates(name, category) {
+  const q = (name || '').toLowerCase().trim();
+  let matches = [];
+
+  // 1. Agar nom bo'yicha so'zlar mos kelsa
+  if (q) {
+    const words = q.split(/\s+/).filter(w => w.length > 2);
+    matches = APP.products.filter(p => {
+      const pn = p.name.toLowerCase();
+      return words.some(w => pn.includes(w)) || pn.includes(q) || q.includes(pn);
+    });
+  }
+
+  // 2. Xuddi shu toifadagi mahsulotlarni qo'shish
+  if (matches.length < 4 && category) {
+    const catMatches = APP.products.filter(p => p.category === category && !matches.some(m => m.id === p.id));
+    matches = matches.concat(catMatches);
+  }
+
+  // 3. Agar suv toifasi bo'lsa, boshqa barcha suvlarni qo'shish
+  if (matches.length < 4 && (category.startsWith('suv') || /suv|water/i.test(q))) {
+    const suvMatches = APP.products.filter(p => /suv|water|0[.,]5/i.test(p.name) && !matches.some(m => m.id === p.id));
+    matches = matches.concat(suvMatches);
+  }
+
+  // 4. Oxirgi qo'shilgan mahsulotlarni shablon sifatida ko'rsatish
+  if (matches.length < 4 && APP.products.length > 0) {
+    const recent = APP.products.filter(p => !matches.some(m => m.id === p.id)).slice(0, 4 - matches.length);
+    matches = matches.concat(recent);
+  }
+
+  return matches.slice(0, 4);
+}
+
+function applyProductTemplate(productId) {
+  const p = APP.products.find(item => item.id === productId);
+  if (!p) return;
+
+  const nameInput = document.getElementById('productName');
+  if (!nameInput.value || nameInput.value.trim() === '') {
+    nameInput.value = p.name;
+  }
+
+  document.getElementById('productPrice').value = p.price;
+  document.getElementById('productCategory').value = p.category;
+
+  if (p.image) {
+    setModalProductImage(p.image);
+  }
+
+  const priceHintBadge = document.getElementById('priceHintBadge');
+  if (priceHintBadge) {
+    priceHintBadge.textContent = `⚡ Shablon: ${formatPriceShort(p.price)} so'm`;
+    priceHintBadge.style.display = 'inline-block';
+  }
+
+  updateSyncCategoryUI(p.category);
+  showToast(`✅ "${p.name}" shablon narxi va ma'lumotlari nusxalandi!`);
+}
+
+function linkCurrentBarcodeToProduct() {
+  if (!APP._currentLinkTargetId) return;
+  const target = APP.products.find(p => p.id === APP._currentLinkTargetId);
+  if (!target) return;
+
+  const barcodeInput = document.getElementById('productBarcode');
+  const codeToLink = extractProductBarcode(barcodeInput?.value.trim());
+
+  if (!codeToLink) {
+    showToast('Shtrix-kod mavjud emas');
+    return;
+  }
+
+  if (target.barcode === codeToLink) {
+    showToast('Bu mahsulotning asosiy kodi bilan bir xil');
+    return;
+  }
+
+  if (!Array.isArray(target.barcodes)) {
+    target.barcodes = [];
+  }
+
+  if (!target.barcodes.includes(codeToLink)) {
+    target.barcodes.push(codeToLink);
+  }
+
+  saveProductToDB(target);
+  closeModal('addProductModal');
+  showToast(`✅ "${codeToLink}" kodi "${target.name}" ga biriktirildi!`);
+}
+
+function updateSyncCategoryUI(category) {
+  const wrap = document.getElementById('syncCategoryWrap');
+  const label = document.getElementById('syncCategoryLabel');
+  if (!wrap || !label) return;
+
+  const currentEditId = document.getElementById('editProductId')?.value;
+  const count = APP.products.filter(p => p.category === category && p.id !== currentEditId).length;
+
+  if (count > 0) {
+    const catName = CATEGORY_NAMES[category] || category;
+    label.textContent = `"${catName}" toifasidagi barcha (${count} ta) mahsulot narxini ham yangilash`;
+    wrap.style.display = 'block';
+  } else {
+    wrap.style.display = 'none';
+  }
+}
+
+function onCategorySelectChange(category) {
+  const priceInput = document.getElementById('productPrice');
+  const priceHintBadge = document.getElementById('priceHintBadge');
+
+  if (APP.categoryPrices[category]) {
+    const defPrice = APP.categoryPrices[category];
+    priceInput.value = defPrice;
+    if (priceHintBadge) {
+      priceHintBadge.textContent = `⚡ Standart: ${formatPriceShort(defPrice)} so'm`;
+      priceHintBadge.style.display = 'inline-block';
+    }
+  }
+
+  updateSyncCategoryUI(category);
+  renderTemplateChips(document.getElementById('productName')?.value, category);
+}
+
+function onProductNameInput(name) {
+  const cat = detectCategoryFromName(name);
+  const catSelect = document.getElementById('productCategory');
+  if (catSelect && cat !== 'boshqa' && catSelect.value !== cat) {
+    catSelect.value = cat;
+    onCategorySelectChange(cat);
+  }
 }
 
 /** Modal ichidagi mahsulot rasmini o'rnatish va prevyu qilish */
@@ -1092,41 +1449,76 @@ async function fetchProductImageOnline() {
 
 async function saveProduct() {
   const name = document.getElementById('productName').value.trim();
-  const barcode = document.getElementById('productBarcode').value.trim();
+  const rawBarcode = document.getElementById('productBarcode').value.trim();
+  const barcode = extractProductBarcode(rawBarcode);
   const price = parseFloat(document.getElementById('productPrice').value);
   const stock = parseInt(document.getElementById('productStock').value) || 0;
   const category = document.getElementById('productCategory').value;
   const image = document.getElementById('productImage')?.value || null;
+  const syncCategory = document.getElementById('syncCategoryCheckbox')?.checked;
 
   if (!name) { showToast('Mahsulot nomini kiriting'); return; }
   if (!barcode) { showToast('Shtrix-kodni kiriting'); return; }
   if (!price || price <= 0) { showToast('Narxni to\'g\'ri kiriting'); return; }
 
   // Takroriy shtrix-kod tekshiruvi (tahrirlashdan tashqari)
-  const existing = APP.products.find(p => p.barcode === barcode && p.id !== APP.editingProductId);
+  const existing = APP.products.find(p =>
+    (p.barcode === barcode || (Array.isArray(p.barcodes) && p.barcodes.includes(barcode))) &&
+    p.id !== APP.editingProductId
+  );
   if (existing) {
     showToast(`Bu shtrix-kod allaqachon: ${existing.name}`);
     return;
   }
 
+  const roundedPrice = Math.round(price);
+
   const product = {
     id: APP.editingProductId || generateId(),
     name, barcode,
-    price: Math.round(price),
+    price: roundedPrice,
     stock,
     category,
     image,
     updatedAt: new Date().toISOString(),
   };
 
+  // Agar tahrirlanayotgan mahsulotda mavjud barcodes bo'lsa saqlab qolamiz
+  if (APP.editingProductId) {
+    const prev = APP.products.find(p => p.id === APP.editingProductId);
+    if (prev && Array.isArray(prev.barcodes)) {
+      product.barcodes = prev.barcodes;
+    }
+  }
+
   if (!APP.editingProductId) {
     product.createdAt = new Date().toISOString();
   }
 
   await saveProductToDB(product);
+
+  // Ushbu toifa standart narxini eslab qolamiz
+  APP.categoryPrices[category] = roundedPrice;
+  saveCategoryPrices();
+
+  // Agar toifadagi barcha mahsulotlar narxini ham yangilash tanlangan bo'lsa
+  let syncedCount = 0;
+  if (syncCategory) {
+    for (const p of APP.products) {
+      if (p.id !== product.id && p.category === category) {
+        p.price = roundedPrice;
+        p.updatedAt = new Date().toISOString();
+        await saveProductToDB(p);
+        syncedCount++;
+      }
+    }
+  }
+
   closeModal('addProductModal');
 
-  if (!APP.editingProductId) {
+  if (syncedCount > 0) {
+    showToast(`✅ ${name} saqlandi! Toifadagi ${syncedCount} ta mahsulot narxi ham ${formatPrice(roundedPrice)} ga yangilandi!`);
+  } else if (!APP.editingProductId) {
     // Yangi mahsulot — keyingi skanlashda avtomatik savatga qo'shilishini eslatish
     showToast(`✅ ${name} saqlandi! Endi skanlashda avtomatik taniladi.`);
   } else {
@@ -1204,11 +1596,6 @@ function renderProductGrid(products) {
     </div>`;
     return;
   }
-
-  const catEmoji = {
-    ichimlik: '🥤', oziq: '🍞', shirinlik: '🍬',
-    sut: '🥛', uy: '🏠', gigiyena: '🧴', boshqa: '📦'
-  };
 
   grid.innerHTML = products.map(p => `
     <div class="product-card" onclick="editProductById('${p.id}')">
@@ -1478,6 +1865,7 @@ function updateFirebaseStatus() {
 //  LOCAL STORAGE
 // ─────────────────────────────────────────────
 function loadLocalData() {
+  loadCategoryPrices();
   try {
     const p = localStorage.getItem('scanpos_products');
     const b = localStorage.getItem('scanpos_bills');

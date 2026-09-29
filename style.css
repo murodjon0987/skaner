@@ -2338,6 +2338,149 @@ textarea {
   transition: transform 0.08s ease;
 }
 
+/* ====== TEMPLATE CHIPS & CATEGORY PRICING & LINKING ====== */
+.template-chips-section {
+  background: rgba(168, 85, 247, 0.08);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.template-chips-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--purple);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.template-chips-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.template-chip {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text1);
+  padding: 6px 10px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.template-chip:hover {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: var(--purple);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.template-chip:active {
+  transform: scale(0.95);
+}
+
+.template-chip .chip-price {
+  color: var(--cyan);
+  font-weight: 600;
+}
+
+/* Label with price badge */
+.label-with-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.price-hint-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--cyan);
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+/* Link existing barcode */
+.link-existing-box {
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px dashed rgba(6, 182, 212, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-top: -6px;
+  margin-bottom: 12px;
+}
+
+.link-existing-title {
+  font-size: 0.74rem;
+  color: var(--text2);
+  margin-bottom: 6px;
+}
+
+.btn-link-barcode {
+  width: 100%;
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  color: var(--cyan);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn-link-barcode:hover {
+  background: rgba(6, 182, 212, 0.25);
+  color: #fff;
+}
+
+.btn-link-barcode:active {
+  transform: scale(0.98);
+}
+
+/* Category sync */
+.sync-category-wrap {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-top: 10px;
+}
+
+.sync-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: #fbbf24;
+  cursor: pointer;
+  margin: 0;
+  user-select: none;
+}
+
+.sync-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #f59e0b;
+  cursor: pointer;
+}
+
 /* Small phone media query (<380px, e.g. iPhone SE, smaller Android phones) */
 @media (max-width: 380px) {
   .bnav-btn span {
