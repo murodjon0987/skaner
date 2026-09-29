@@ -289,6 +289,8 @@ function detectCategoryFromName(name) {
 //  INIT
 // ─────────────────────────────────────────────
 window.initApp = async function () {
+  if (window._appInited) return;
+  window._appInited = true;
   loadSettings();
   loadLocalData();
   loadQuickItems();
@@ -341,19 +343,14 @@ window.initApp = async function () {
   updateTorchUI();
 };
 
-// Agar Firebase modul allaqachon yuklangan bo'lsa va initApp chaqirilmagan bo'lsa
-if (window.firebaseReady) {
-  window.initApp();
-} else {
-  window.addEventListener('appReady', window.initApp);
-}
+// initApp faqat initFirebase() finally blokidan chaqiriladi (index.html)
 
 // ─────────────────────────────────────────────
 //  ZXING LOADER
 // ─────────────────────────────────────────────
 function loadZXing() {
   const s = document.createElement('script');
-  s.src = 'https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js';
+  s.src = 'https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js';
   s.onload = () => {
     if (window.ZXingBrowser && window.ZXingBrowser.BrowserMultiFormatReader) {
       zxingReader = new window.ZXingBrowser.BrowserMultiFormatReader();
@@ -412,10 +409,13 @@ function stopCamera() {
     APP.cameraStream.getTracks().forEach(t => t.stop());
     APP.cameraStream = null;
   }
-  if (zxingReader) {
+  if (APP._zxingControls) {
     try {
-      zxingReader.reset();
+      APP._zxingControls.stop();
     } catch (e) {}
+    APP._zxingControls = null;
+  } else if (zxingReader) {
+    try { zxingReader.reset(); } catch (e) {}
   }
   APP.scanning = false;
   if (APP.scannerLoop) {
@@ -484,27 +484,25 @@ function startScanning() {
 // ── Native BarcodeDetector (eng yaxshi usul) ──
 async function scanWithNativeAPI() {
   const video = document.getElementById('cameraFeed');
-  const hint = document.getElementById('scanHint');
+  const THROTTLE_MS = 120;
+  let lastDetectTime = 0;
 
-  const loop = async () => {
+  const loop = (timestamp) => {
     if (!APP.scanning) return;
 
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      try {
-        const barcodes = await APP.barcodeDetector.detect(video);
-        if (barcodes.length > 0) {
-          const bc = barcodes[0];
-          handleBarcodeDetected(bc.rawValue);
+    if ((timestamp - lastDetectTime) >= THROTTLE_MS && video.readyState === video.HAVE_ENOUGH_DATA) {
+      lastDetectTime = timestamp;
+      APP.barcodeDetector.detect(video).then((barcodes) => {
+        if (barcodes.length > 0 && APP.scanning) {
+          handleBarcodeDetected(barcodes[0].rawValue);
         }
-      } catch (e) {
-        // Ignore frame errors
-      }
+      }).catch(() => {});
     }
 
     APP.scannerLoop = requestAnimationFrame(loop);
   };
 
-  loop();
+  APP.scannerLoop = requestAnimationFrame(loop);
 }
 
 // ── ZXing fallback ──
@@ -517,6 +515,8 @@ function scanWithZXing() {
       if (result && APP.scanning) {
         handleBarcodeDetected(result.getText());
       }
+    }).then(controls => {
+      APP._zxingControls = controls;
     }).catch(e => console.warn('ZXing xato:', e));
   } else {
     // ZXing hali yuklanmagan bo'lsa kutib turish
@@ -533,7 +533,7 @@ function handleBarcodeDetected(rawCode) {
   if (!rawCode) return;
 
   // Modal ochiq paytda yoki onlayn qidiruv ketayotganda skanerlashni bloklash
-  if (!APP._scanForModal && document.querySelector('.modal-overlay.active')) return;
+  if (!APP._scanForModal && document.querySelector('.modal-overlay.open')) return;
   if (APP.isLookingUpOnline) return;
 
   rawCode = String(rawCode).trim();
@@ -859,6 +859,22 @@ function deleteQuickItem(itemId) {
 //  CART (SAVAT)
 // ─────────────────────────────────────────────
 function addToCart(product) {
+  const isQuick = product.stock === 999; // Tezkor kodsiz tovar — cheklanmagan
+
+  // Stock tekshiruvi (tezkor tovarlar bundan mustasno)
+  if (!isQuick) {
+    const existing = APP.cart.find(i => i.id === product.id);
+    const cartQty = existing ? existing.qty : 0;
+    if (product.stock <= 0) {
+      if (typeof SOUNDS !== 'undefined') SOUNDS.error();
+      showToast(`⚠️ ${product.name} — omborda qolmagan!`);
+      return;
+    }
+    if (cartQty + 1 > product.stock) {
+      if (!confirm(`⚠️ Omborda ${product.stock} ta mavjud. ${cartQty + 1} ta qo'shilsinmi?`)) return;
+    }
+  }
+
   // Tovush berish (Korzinka kassa skaneri "TIQ!" tovushi)
   if (typeof SOUNDS !== 'undefined') SOUNDS.tiq();
 
@@ -1091,21 +1107,38 @@ async function completeSale() {
       change,
     };
 
-    // ── Mahsulotlar qoldig'ini (stock) kamaytirish ──
-    for (const item of APP.cart) {
-      const prod = APP.products.find(p => p.id === item.id);
-      if (prod) {
-        const currentStock = parseInt(prod.stock, 10) || 0;
-        prod.stock = Math.max(0, currentStock - item.qty);
-        prod.updatedAt = new Date().toISOString();
-        await saveProductToDB(prod);
+    // ── Atomik yozuv: stock kamaytirish + chek saqlash ──
+    if (!window.useDemo && window.firebaseDB && window.firebaseFns) {
+      // Firebase: bitta writeBatch ichida barcha o'zgarishlar
+      const { doc, writeBatch: wb } = window.firebaseFns;
+      const batch = wb(window.firebaseDB);
+      for (const item of APP.cart) {
+        const prod = APP.products.find(p => p.id === item.id);
+        if (prod) {
+          const currentStock = parseInt(prod.stock, 10) || 0;
+          prod.stock = Math.max(0, currentStock - item.qty);
+          prod.updatedAt = new Date().toISOString();
+          batch.set(doc(window.firebaseDB, 'products', prod.id), prod);
+        }
       }
+      batch.set(doc(window.firebaseDB, 'bills', bill.id), bill);
+      await batch.commit(); // Muvaffaqiyatsiz bo'lsa catch blokiga o'tadi
+    } else {
+      // Demo/localStorage rejim: barcha o'zgarishlarni bir safar saqlash
+      for (const item of APP.cart) {
+        const prod = APP.products.find(p => p.id === item.id);
+        if (prod) {
+          const currentStock = parseInt(prod.stock, 10) || 0;
+          prod.stock = Math.max(0, currentStock - item.qty);
+          prod.updatedAt = new Date().toISOString();
+        }
+      }
+      APP.bills.unshift(bill);
+      saveLocalData();
+      renderBills();
     }
     updateProductStats();
     renderProducts();
-
-    // Firebase yoki localStorage ga saqlash
-    await saveBill(bill);
 
     // Kassa pul qutisi jiringlashi
     SOUNDS.cash();
@@ -2435,7 +2468,7 @@ function saveLocalData() {
         return p;
       });
       localStorage.setItem('scanpos_products', JSON.stringify(slimProducts));
-      localStorage.setItem('scanpos_bills', JSON.stringify((APP.bills || []).slice(-100)));
+      localStorage.setItem('scanpos_bills', JSON.stringify((APP.bills || []).slice(0, 100)));
       localStorage.setItem('scanpos_cart', JSON.stringify(APP.cart || []));
     } catch (err) {
       console.error('LocalStorage ga saqlab bo\'lmadi:', err);
