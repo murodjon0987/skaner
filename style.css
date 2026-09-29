@@ -2977,3 +2977,80 @@ textarea {
 }
 
 .btn-success:active { opacity: 0.8; }
+
+/* =============================================
+   SVG ICON SYSTEM
+   ============================================= */
+
+.svg-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.icon-green { color: var(--green); }
+.icon-red   { color: var(--red); }
+.icon-yellow{ color: var(--yellow); }
+.icon-cyan  { color: var(--cyan); }
+
+/* Empty state icon */
+.empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  background: var(--bg3);
+  border-radius: 50%;
+  margin: 0 auto 12px;
+  color: var(--text3);
+}
+
+/* Chart title with inline icon */
+.an-chart-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Debtor status dot (replaces emoji) */
+.debtor-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.dot-green  { background: var(--green); }
+.dot-red    { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.dot-yellow { background: var(--yellow); }
+
+/* Bill method badge icons alignment */
+.bill-method {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Button icon alignment */
+.btn-edit .svg-icon,
+.btn-del .svg-icon,
+.btn-sm .svg-icon,
+.btn-xs .svg-icon,
+.btn-primary .svg-icon,
+.btn-secondary .svg-icon,
+.btn-danger .svg-icon,
+.btn-success .svg-icon {
+  vertical-align: -2px;
+}
+
+/* product-emoji SVG fix */
+.product-emoji .svg-icon {
+  width: 26px;
+  height: 26px;
+  color: var(--text2);
+}
