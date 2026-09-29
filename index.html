@@ -12,6 +12,13 @@
   <title>ScanPOS – Shtrix-kod Kassa Tizimi</title>
   <meta name="description"
     content="Smartfon kamerasi orqali shtrix-kod skanerlash va avtomatik narx hisoblash tizimi. O'zbekiston uchun zamonaviy mobil POS." />
+  
+  <!-- App Icons & Favicon -->
+  <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <link rel="alternate icon" type="image/png" href="logo.png" />
+  <link rel="apple-touch-icon" href="logo.png" />
+  <meta property="og:image" content="logo.png" />
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
@@ -65,21 +72,7 @@
   <div id="splash" class="splash">
     <div class="splash-logo">
       <div class="splash-icon">
-        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-          <rect x="4" y="10" width="6" height="44" rx="2" fill="url(#g1)" />
-          <rect x="14" y="10" width="3" height="44" rx="1" fill="url(#g1)" />
-          <rect x="21" y="10" width="6" height="44" rx="2" fill="url(#g1)" />
-          <rect x="31" y="10" width="3" height="44" rx="1" fill="url(#g1)" />
-          <rect x="38" y="10" width="6" height="44" rx="2" fill="url(#g1)" />
-          <rect x="48" y="10" width="3" height="44" rx="1" fill="url(#g1)" />
-          <rect x="55" y="10" width="5" height="44" rx="2" fill="url(#g1)" />
-          <defs>
-            <linearGradient id="g1" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#a855f7" />
-              <stop offset="1" stop-color="#06b6d4" />
-            </linearGradient>
-          </defs>
-        </svg>
+        <img src="logo.png" alt="ScanPOS Logo" width="86" height="86" style="border-radius:24px;object-fit:cover;display:block;" onerror="this.src='logo.svg'" />
       </div>
       <h1 class="splash-title">ScanPOS</h1>
       <p class="splash-sub">Aqlli Kassa Tizimi</p>
@@ -94,22 +87,8 @@
 
     <header class="top-nav">
       <div class="nav-left">
-        <div class="brand-logo">
-          <svg width="24" height="24" viewBox="0 0 64 64" fill="none">
-            <rect x="4" y="10" width="6" height="44" rx="2" fill="url(#gnav)" />
-            <rect x="14" y="10" width="3" height="44" rx="1" fill="url(#gnav)" />
-            <rect x="21" y="10" width="6" height="44" rx="2" fill="url(#gnav)" />
-            <rect x="31" y="10" width="3" height="44" rx="1" fill="url(#gnav)" />
-            <rect x="38" y="10" width="6" height="44" rx="2" fill="url(#gnav)" />
-            <rect x="48" y="10" width="3" height="44" rx="1" fill="url(#gnav)" />
-            <rect x="55" y="10" width="5" height="44" rx="2" fill="url(#gnav)" />
-            <defs>
-              <linearGradient id="gnav" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#a855f7" />
-                <stop offset="1" stop-color="#06b6d4" />
-              </linearGradient>
-            </defs>
-          </svg>
+        <div class="brand-logo" onclick="showPage('scanner')" style="cursor:pointer;" title="Bosh sahifa">
+          <img src="logo.svg" alt="ScanPOS Logo" width="28" height="28" style="border-radius:8px;display:block;" onerror="this.src='logo.png'" />
           <span>ScanPOS</span>
         </div>
       </div>
@@ -412,6 +391,10 @@
                 <option value="ru-RU">Ruscha</option>
                 <option value="en-US">Inglizcha</option>
               </select>
+            </div>
+            <div class="settings-item toggle-item" style="padding: 10px 14px;">
+              <label>Skaner ovozini sinash</label>
+              <button type="button" class="btn-secondary" style="padding:6px 12px;font-size:0.75rem;" onclick="SOUNDS.beep(); announceVoice('Test mahsulot', 5000); showToast('🔊 Bip va ovoz sinovi');">🔊 Tovushni sinash</button>
             </div>
           </div>
           <h3 class="settings-group-title">Firebase holati</h3>

@@ -560,6 +560,7 @@ function handleBarcodeDetected(rawCode) {
     updateScanHint(`✅ ${product.name}`, 'success');
   } else {
     // ❌ Mahalliy bazada topilmadi — internetdan qidiramiz
+    SOUNDS.error();
     updateScanHint(`🌐 ${code} internetdan qidirilmoqda...`, 'success');
     showToast(`🌐 Kod: ${code} — qidirilmoqda...`);
     vibrateDevice([100, 50, 100]);
@@ -697,6 +698,9 @@ function addFoundProductToCart() {
 //  CART (SAVAT)
 // ─────────────────────────────────────────────
 function addToCart(product) {
+  // Tovush berish (Supermarket kassa skaneri bipi)
+  if (typeof SOUNDS !== 'undefined') SOUNDS.beep();
+
   const existing = APP.cart.find(i => i.id === product.id);
   if (existing) {
     existing.qty++;
@@ -717,6 +721,7 @@ function changeQty(productId, delta) {
   const item = APP.cart.find(i => i.id === productId);
   if (!item) return;
   item.qty += delta;
+  if (typeof SOUNDS !== 'undefined' && delta > 0) SOUNDS.pop();
   if (item.qty <= 0) {
     APP.cart = APP.cart.filter(i => i.id !== productId);
   }
@@ -897,6 +902,9 @@ async function completeSale() {
   // Firebase yoki localStorage ga saqlash
   await saveBill(bill);
 
+  // Kassa pul qutisi jiringlashi
+  SOUNDS.cash();
+
   // Ovozli e'lon
   announceVoice(`Jami ${formatPriceVoice(grand)}. To'lov qabul qilindi!`, 0);
 
@@ -913,43 +921,223 @@ async function completeSale() {
 }
 
 // ─────────────────────────────────────────────
+//  AUDIO ENGINE (Web Audio API – BEEP & SOUNDS)
+// ─────────────────────────────────────────────
+const SOUNDS = {
+  ctx: null,
+
+  init() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx && !this.ctx) {
+        this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    } catch (e) {
+      console.warn('AudioContext init error:', e);
+    }
+  },
+
+  getContext() {
+    if (!this.ctx) this.init();
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+    return this.ctx;
+  },
+
+  /**
+   * Supermarket kassa skaneri bipi (Loud & Crisp POS Barcode Beep)
+   * 2400Hz -> 1800Hz chastotada 80ms davom etuvchi tiniq va baland signal.
+   */
+  beep() {
+    if (!APP.voiceOn) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(2400, now);
+      osc.frequency.exponentialRampToValueAtTime(1850, now + 0.075);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.65, now + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.085);
+    } catch (e) {
+      console.warn('Audio beep error:', e);
+    }
+  },
+
+  /**
+   * Savatga mahsulot qo'shilganda yoki miqdor o'zgarganda (Pop/Chime)
+   */
+  pop() {
+    if (!APP.voiceOn) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.exponentialRampToValueAtTime(1320, now + 0.06);
+
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.075);
+    } catch (e) { }
+  },
+
+  /**
+   * To'lov qabul qilinganda ("Ka-ching!" kassa pul qutisi jiringlashi)
+   */
+  cash() {
+    if (!APP.voiceOn) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+      notes.forEach((freq, idx) => {
+        const now = ctx.currentTime + (idx * 0.065);
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.4, now + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.36);
+      });
+    } catch (e) { }
+  },
+
+  /**
+   * Xatolik yoki kod topilmaganda ogohlantirish tovushi
+   */
+  error() {
+    if (!APP.voiceOn) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      [0, 0.09].forEach(delay => {
+        const t = now + delay;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(260, t);
+        osc.frequency.exponentialRampToValueAtTime(180, t + 0.065);
+
+        gain.gain.setValueAtTime(0.25, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.075);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(t);
+        osc.stop(t + 0.08);
+      });
+    } catch (e) { }
+  }
+};
+
+// Mobil qurilmalarda birinchi teginishda audio ruxsatini yechish
+['pointerdown', 'touchstart', 'click', 'keydown'].forEach(evt => {
+  window.addEventListener(evt, () => {
+    SOUNDS.init();
+    if (window.speechSynthesis && window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+  }, { once: true, passive: true });
+});
+
+// ─────────────────────────────────────────────
 //  VOICE (OVOZLI E'LON)
 // ─────────────────────────────────────────────
 function announceVoice(name, price) {
   if (!APP.voiceOn) return;
   if (!window.speechSynthesis) return;
 
-  window.speechSynthesis.cancel();
+  try {
+    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+    window.speechSynthesis.cancel();
+  } catch (e) { }
 
   const lang = APP.settings.voiceLang || 'uz-UZ';
   let text;
 
   if (lang === 'uz-UZ' || lang === 'uz') {
     text = price > 0
-      ? `${name}, narxi ${formatPriceVoice(price)}`
+      ? `${name}, ${formatPriceVoice(price)}`
       : name;
   } else if (lang === 'ru-RU') {
     text = price > 0
-      ? `${name}, цена ${formatPriceVoice(price)} сумов`
+      ? `${name}, ${formatPriceVoice(price)} сум`
       : name;
   } else {
     text = price > 0
-      ? `${name}, price ${formatPriceVoice(price)} soums`
+      ? `${name}, ${formatPriceVoice(price)} soums`
       : name;
   }
 
   const utt = new SpeechSynthesisUtterance(text);
-  utt.lang = lang;
-  utt.rate = 1.1;
+  utt.rate = 1.05;
   utt.pitch = 1.0;
   utt.volume = 1.0;
 
-  // Mavjud ovozlardan mos tilni tanlash
+  // Mavjud ovozlardan eng yaxshisini tanlash
   const voices = window.speechSynthesis.getVoices();
-  const match = voices.find(v => v.lang.startsWith(lang.split('-')[0]));
-  if (match) utt.voice = match;
+  if (voices && voices.length > 0) {
+    const langPrefix = lang.split('-')[0].toLowerCase();
+    let match = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix));
+    if (!match && langPrefix === 'uz') {
+      match = voices.find(v => v.lang.toLowerCase().startsWith('ru')) || voices[0];
+    }
+    if (match) {
+      utt.voice = match;
+      utt.lang = match.lang;
+    } else {
+      utt.lang = lang;
+    }
+  } else {
+    utt.lang = lang;
+  }
 
-  window.speechSynthesis.speak(utt);
+  try {
+    window.speechSynthesis.speak(utt);
+  } catch (e) {
+    console.warn('Speech error:', e);
+  }
 }
 
 function formatPriceVoice(amount) {
