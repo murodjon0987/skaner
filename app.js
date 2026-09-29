@@ -2451,6 +2451,8 @@ function loadLocalData() {
   } catch (e) {
     console.warn('loadLocalData xato:', e);
   }
+  // Nasiya ma'lumotlarini ham yuklash
+  loadNasiyaData();
 }
 
 function saveLocalData() {
@@ -3096,10 +3098,6 @@ function filterDebtors(query) {
 }
 
 // ── Mijoz (debtor) CRUD ──
-function openModal(id) {
-  const el = document.getElementById(id);
-  if (el) el.classList.add('open');
-}
 
 function saveDebtor() {
   const name = document.getElementById('debtorName').value.trim();
@@ -3241,12 +3239,3 @@ window.showPage = function (page) {
     updateNasiyaStats();
   }
 };
-
-// ── loadLocalData hook: nasiya ma'lumotlarini ham yuklash ──
-const _origLoadLocalData = window.loadLocalData || loadLocalData;
-function loadLocalData() {
-  if (typeof _origLoadLocalData === 'function' && _origLoadLocalData !== loadLocalData) {
-    _origLoadLocalData();
-  }
-  loadNasiyaData();
-}
