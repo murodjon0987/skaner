@@ -1705,11 +1705,15 @@ async function saveProduct() {
   closeModal('addProductModal');
 
   if (syncedCount > 0) {
+    SOUNDS.pop();
     showToast(`✅ ${name} saqlandi! Toifadagi ${syncedCount} ta mahsulot narxi ham ${formatPrice(roundedPrice)} ga yangilandi!`);
   } else if (!APP.editingProductId) {
-    // Yangi mahsulot — keyingi skanlashda avtomatik savatga qo'shilishini eslatish
+    // Yangi mahsulot — bip ovozi va ovozli e'lon
+    SOUNDS.beep();
+    announceVoice(name, roundedPrice);
     showToast(`✅ ${name} saqlandi! Endi skanlashda avtomatik taniladi.`);
   } else {
+    SOUNDS.pop();
     showToast(`✅ ${name} yangilandi`);
   }
 }
