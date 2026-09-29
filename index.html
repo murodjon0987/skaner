@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ScanPOS – Shtrix-kod Kassa Tizimi</title>
+  <meta name="description"
+    content="Smartfon kamerasi orqali shtrix-kod skanerlash va avtomatik narx hisoblash tizimi. O'zbekiston uchun zamonaviy mobil POS." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet" />
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDEMO_REPLACE_WITH_YOUR_KEY",
+      authDomain: "scanpos-demo.firebaseapp.com",
+      projectId: "scanpos-demo",
+      storageBucket: "scanpos-demo.appspot.com",
+      messagingSenderId: "123456789",
+      appId: "1:123456789:web:abcdef123456"
+    };
+
+    let db = null;
+    window.useDemo = true;
+
+    try {
+      const app = initializeApp(firebaseConfig);
+      db = getFirestore(app);
+      const auth = getAuth(app);
+      await signInAnonymously(auth);
+      window.useDemo = false;
+      console.log("Firebase ulandi!");
+    } catch (e) {
+      console.warn("Demo rejimda ishlayapti.");
+      window.useDemo = true;
+    }
+
+    window.firebaseDB = db;
+    window.firebaseFns = { collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp };
+    window.firebaseReady = true;
+    if (typeof window.initApp === 'function') window.initApp();
+    else window.addEventListener('appReady', () => window.initApp());
+  </script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <!-- SPLASH SCREEN -->
+  <div id="splash" class="splash">
+    <div class="splash-logo">
+      <div class="splash-icon">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <rect x="4" y="10" width="6" height="44" rx="2" fill="url(#g1)" />
+          <rect x="14" y="10" width="3" height="44" rx="1" fill="url(#g1)" />
+          <rect x="21" y="10" width="6" height="44" rx="2" fill="url(#g1)" />
+          <rect x="31" y="10" width="3" height="44" rx="1" fill="url(#g1)" />
+          <rect x="38" y="10" width="6" height="44" rx="2" fill="url(#g1)" />
+          <rect x="48" y="10" width="3" height="44" rx="1" fill="url(#g1)" />
+          <rect x="55" y="10" width="5" height="44" rx="2" fill="url(#g1)" />
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#a855f7" />
+              <stop offset="1" stop-color="#06b6d4" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <h1 class="splash-title">ScanPOS</h1>
+      <p class="splash-sub">Aqlli Kassa Tizimi</p>
+      <div class="splash-loader">
+        <div class="splash-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app" class="app hidden">
+
+    <header class="top-nav">
+      <div class="nav-left">
+        <div class="brand-logo">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none">
+            <rect x="4" y="10" width="6" height="44" rx="2" fill="url(#gnav)" />
+            <rect x="14" y="10" width="3" height="44" rx="1" fill="url(#gnav)" />
+            <rect x="21" y="10" width="6" height="44" rx="2" fill="url(#gnav)" />
+            <rect x="31" y="10" width="3" height="44" rx="1" fill="url(#gnav)" />
+            <rect x="38" y="10" width="6" height="44" rx="2" fill="url(#gnav)" />
+            <rect x="48" y="10" width="3" height="44" rx="1" fill="url(#gnav)" />
+            <rect x="55" y="10" width="5" height="44" rx="2" fill="url(#gnav)" />
+            <defs>
+              <linearGradient id="gnav" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#a855f7" />
+                <stop offset="1" stop-color="#06b6d4" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <span>ScanPOS</span>
+        </div>
+      </div>
+      <div class="nav-right">
+        <div id="demoTag" class="demo-tag hidden">DEMO</div>
+        <button id="voiceToggle" class="nav-btn active" title="Ovoz" onclick="toggleVoice()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+          </svg>
+        </button>
+        <button class="nav-btn" onclick="showPage('settings')" title="Sozlamalar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="pages">
+
+      <!-- PAGE: SCANNER -->
+      <div id="page-scanner" class="page active">
+        <div class="scanner-section">
+          <div class="scanner-wrapper" id="scannerWrapper">
+            <video id="cameraFeed" autoplay playsinline muted></video>
+            <canvas id="scanCanvas" style="display:none;"></canvas>
+            <div class="scanner-overlay">
+              <div class="scan-frame" id="scanFrame">
+                <div class="corner tl"></div>
+                <div class="corner tr"></div>
+                <div class="corner bl"></div>
+                <div class="corner br"></div>
+                <div class="scan-line" id="scanLine"></div>
+              </div>
+              <p class="scan-hint" id="scanHint">Shtrix-kodni ramka ichiga oling</p>
+            </div>
+            <div class="camera-off" id="cameraOff">
+              <div class="camera-off-icon">📷</div>
+              <p>Kamera yoqilmagan</p>
+              <button class="btn-primary" onclick="startCamera()">Kamerani Yoqish</button>
+            </div>
+            <div class="scan-flash" id="scanFlash"></div>
+            <button class="manual-btn" onclick="showManualInput()" title="Qo'lda kiritish">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            </button>
+          </div>
+          <div class="manual-input-bar" id="manualInputBar">
+            <input type="text" id="manualBarcodeInput" placeholder="Shtrix-kod raqamini kiriting..."
+              inputmode="numeric" />
+            <button onclick="searchManualBarcode()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </button>
+          </div>
+          <div class="product-found-card" id="productFoundCard" style="display:none;">
+            <div class="pf-info">
+              <div class="pf-barcode" id="pfBarcode"></div>
+              <div class="pf-details">
+                <div class="pf-name" id="pfName"></div>
+                <div class="pf-price" id="pfPrice"></div>
+              </div>
+            </div>
+            <button class="pf-add-btn" onclick="addFoundProductToCart()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Qo'shish
+            </button>
+          </div>
+        </div>
+
+        <div class="cart-section">
+          <div class="cart-header">
+            <h2>Savat <span class="cart-count" id="cartCount">0</span></h2>
+            <button class="clear-cart-btn" id="clearCartBtn" onclick="clearCart()"
+              style="display:none;">Tozalash</button>
+          </div>
+          <div class="empty-cart" id="emptyCart">
+            <div class="empty-cart-icon">🛒</div>
+            <p>Savat bo'sh</p>
+            <span>Mahsulot skanerlang yoki qidiring</span>
+          </div>
+          <ul class="cart-list" id="cartList"></ul>
+          <div class="cart-footer" id="cartFooter" style="display:none;">
+            <div class="total-rows">
+              <div class="total-row"><span>Jami mahsulotlar:</span><span id="totalItems">0 ta</span></div>
+              <div class="total-row"><span>Oraliq summa:</span><span id="subtotalAmt">0 so'm</span></div>
+              <div class="total-row discount-row" id="discountRow" style="display:none;">
+                <span>Chegirma:</span><span id="discountAmt" class="discount-text">-0 so'm</span>
+              </div>
+              <div class="total-row grand">
+                <span>JAMI:</span><span id="grandTotal" class="grand-total-text">0 so'm</span>
+              </div>
+            </div>
+            <button class="checkout-btn" onclick="proceedToCheckout()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+              </svg>
+              To'lash – <span id="checkoutTotal">0 so'm</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE: PRODUCTS -->
+      <div id="page-products" class="page">
+        <div class="page-header">
+          <h2>Mahsulotlar</h2>
+          <button class="btn-icon" onclick="showAddProductModal()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+        </div>
+        <div class="search-bar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input type="text" id="productSearch" placeholder="Mahsulot qidirish..."
+            oninput="filterProducts(this.value)" />
+        </div>
+        <div class="product-stats">
+          <div class="stat-card">
+            <div class="stat-num" id="totalProductsCount">0</div>
+            <div class="stat-label">Mahsulot</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num" id="totalStockValue">0</div>
+            <div class="stat-label">Qiymat (so'm)</div>
+          </div>
+        </div>
+        <div class="product-grid" id="productGrid">
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Yuklanmoqda...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE: BILLS -->
+      <div id="page-bills" class="page">
+        <div class="page-header">
+          <h2>Cheklar tarixi</h2>
+          <button class="btn-icon" onclick="clearAllBills()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14H6L5 6" />
+            </svg>
+          </button>
+        </div>
+        <div class="bills-summary">
+          <div class="stat-card">
+            <div class="stat-num" id="totalBillsCount">0</div>
+            <div class="stat-label">Jami chek</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num" id="totalBillsAmount">0</div>
+            <div class="stat-label">Jami (so'm)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num" id="todayBillsCount">0</div>
+            <div class="stat-label">Bugun</div>
+          </div>
+        </div>
+        <ul class="bills-list" id="billsList">
+          <div class="empty-state">
+            <div style="font-size:3rem;">🧾</div>
+            <p>Hali chek yo'q</p>
+          </div>
+        </ul>
+      </div>
+
+      <!-- PAGE: ANALYTICS -->
+      <div id="page-analytics" class="page analytics-page">
+        <div class="page-header">
+          <h2>Hisobot & Tahlil</h2>
+          <div class="analytics-period-tabs">
+            <button class="period-tab active" id="ptab-week" onclick="switchAnalyticsPeriod('week')">7 kun</button>
+            <button class="period-tab" id="ptab-month" onclick="switchAnalyticsPeriod('month')">30 kun</button>
+          </div>
+        </div>
+
+        <!-- Top stats -->
+        <div class="analytics-stats">
+          <div class="an-stat-card an-gradient-1">
+            <div class="an-stat-icon">💰</div>
+            <div class="an-stat-info">
+              <div class="an-stat-val" id="anTotalRevenue">0</div>
+              <div class="an-stat-label">Jami daromad</div>
+            </div>
+          </div>
+          <div class="an-stat-card an-gradient-2">
+            <div class="an-stat-icon">🧾</div>
+            <div class="an-stat-info">
+              <div class="an-stat-val" id="anTotalBills">0</div>
+              <div class="an-stat-label">Cheklar soni</div>
+            </div>
+          </div>
+          <div class="an-stat-card an-gradient-3">
+            <div class="an-stat-icon">📦</div>
+            <div class="an-stat-info">
+              <div class="an-stat-val" id="anTotalItems">0</div>
+              <div class="an-stat-label">Mahsulotlar sotildi</div>
+            </div>
+          </div>
+          <div class="an-stat-card an-gradient-4">
+            <div class="an-stat-icon">📊</div>
+            <div class="an-stat-info">
+              <div class="an-stat-val" id="anAvgBill">0</div>
+              <div class="an-stat-label">O'rtacha chek</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Revenue chart -->
+        <div class="an-chart-card">
+          <div class="an-chart-title">📈 Kunlik savdo dinamikasi</div>
+          <div class="an-chart-wrap">
+            <canvas id="revenueChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Payment methods + Top products -->
+        <div class="an-two-col">
+          <div class="an-chart-card">
+            <div class="an-chart-title">💳 To'lov usullari</div>
+            <div class="an-chart-wrap an-chart-wrap--sm">
+              <canvas id="paymentChart"></canvas>
+            </div>
+            <div class="payment-legend" id="paymentLegend"></div>
+          </div>
+          <div class="an-chart-card">
+            <div class="an-chart-title">🏆 TOP-5 mahsulot</div>
+            <div class="top-products-list" id="topProductsList"></div>
+          </div>
+        </div>
+
+        <!-- Best hour -->
+        <div class="an-chart-card">
+          <div class="an-chart-title">⏰ Soat bo'yicha savdo (bugun)</div>
+          <div class="an-chart-wrap">
+            <canvas id="hourlyChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE: SETTINGS -->
+      <div id="page-settings" class="page">
+        <div class="page-header">
+          <h2>Sozlamalar</h2>
+        </div>
+        <div class="settings-section">
+          <h3 class="settings-group-title">Do'kon ma'lumotlari</h3>
+          <div class="settings-group">
+            <div class="settings-item"><label>Do'kon nomi</label><input type="text" id="shopName"
+                placeholder="Do'konim" /></div>
+            <div class="settings-item"><label>Manzil</label><input type="text" id="shopAddress"
+                placeholder="Toshkent, Chilonzor" /></div>
+            <div class="settings-item"><label>Telefon</label><input type="tel" id="shopPhone"
+                placeholder="+998 90 000 00 00" /></div>
+          </div>
+          <h3 class="settings-group-title">Hisob sozlamalari</h3>
+          <div class="settings-group">
+            <div class="settings-item toggle-item">
+              <label>QQS (soliq, %)</label>
+              <div class="toggle-right"><input type="number" id="taxRate" value="0" min="0" max="50"
+                  class="small-input" /><span class="unit">%</span></div>
+            </div>
+            <div class="settings-item toggle-item">
+              <label>Chegirma imkoniyati</label>
+              <label class="toggle-switch"><input type="checkbox" id="discountEnabled" onchange="saveSettings()" /><span
+                  class="toggle-slider"></span></label>
+            </div>
+            <div class="settings-item toggle-item">
+              <label>Ovozli e'lon</label>
+              <label class="toggle-switch"><input type="checkbox" id="voiceEnabled" checked
+                  onchange="saveSettings(); updateVoiceBtn()" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="settings-item toggle-item">
+              <label>Ovoz tili</label>
+              <select id="voiceLang" onchange="saveSettings()">
+                <option value="uz-UZ">O'zbekcha</option>
+                <option value="ru-RU">Ruscha</option>
+                <option value="en-US">Inglizcha</option>
+              </select>
+            </div>
+          </div>
+          <h3 class="settings-group-title">Firebase holati</h3>
+          <div class="settings-group">
+            <div class="firebase-status" id="firebaseStatus">
+              <div class="status-dot" id="statusDot"></div>
+              <span id="statusText">Tekshirilmoqda...</span>
+            </div>
+            <p class="settings-hint">Firebase sozlash uchun index.html-dagi firebaseConfig ni tahrirlang</p>
+          </div>
+          <button class="btn-primary btn-full"
+            onclick="saveSettings(); showToast('Sozlamalar saqlandi')">Saqlash</button>
+          <h3 class="settings-group-title">Ma'lumotlar</h3>
+          <div class="settings-group">
+            <button class="btn-secondary btn-full" onclick="loadDemoProducts()">Demo mahsulotlarni yuklash</button>
+            <button class="btn-danger btn-full" onclick="deleteAllProducts()">Barcha mahsulotlarni o'chirish</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="bnav-btn active" id="bnav-scanner" onclick="showPage('scanner')" data-page="scanner">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+          <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+          <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+          <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+          <rect x="7" y="7" width="10" height="10" rx="1" />
+        </svg>
+        <span>Skaner</span>
+      </button>
+      <button class="bnav-btn" id="bnav-products" onclick="showPage('products')" data-page="products">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path
+            d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+        </svg>
+        <span>Mahsulotlar</span>
+      </button>
+      <button class="bnav-btn" id="bnav-bills" onclick="showPage('bills')" data-page="bills">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>
+        <span>Cheklar</span>
+        <span class="bnav-badge" id="billsBadge" style="display:none;"></span>
+      </button>
+      <button class="bnav-btn" id="bnav-analytics" onclick="showPage('analytics')" data-page="analytics">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="20" x2="18" y2="10" />
+          <line x1="12" y1="20" x2="12" y2="4" />
+          <line x1="6" y1="20" x2="6" y2="14" />
+        </svg>
+        <span>Hisobot</span>
+      </button>
+      <button class="bnav-btn" id="bnav-settings" onclick="showPage('settings')" data-page="settings">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        <span>Sozlamalar</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- MODALS -->
+
+  <!-- Add Product Modal -->
+  <div class="modal-overlay" id="addProductModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">Yangi mahsulot</h3>
+        <button class="modal-close" onclick="closeModal('addProductModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Internet dan topilgan mahsulot rasmi -->
+        <div id="productImagePreview" style="display:none;text-align:center;margin-bottom:14px;">
+          <img src="" alt="Mahsulot rasmi"
+            style="max-height:100px;max-width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.1);object-fit:contain;background:rgba(255,255,255,0.05);padding:6px;" />
+        </div>
+        <div class="form-group">
+          <label>Mahsulot nomi *</label>
+          <input type="text" id="productName" placeholder="Masalan: Coca-Cola 500ml" />
+        </div>
+        <div class="form-group">
+          <label>Shtrix-kod *</label>
+          <div class="barcode-input-row">
+            <input type="text" id="productBarcode" placeholder="8600001234567" inputmode="numeric" />
+            <button class="scan-barcode-btn" onclick="scanForModal()">Skaner</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Narxi (so'm) *</label>
+            <input type="number" id="productPrice" placeholder="15000" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Ombordagi miqdor</label>
+            <input type="number" id="productStock" placeholder="100" min="0" value="0" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Kategoriya</label>
+          <select id="productCategory">
+            <option value="ichimlik">Ichimliklar</option>
+            <option value="oziq">Oziq-ovqat</option>
+            <option value="shirinlik">Shirinliklar</option>
+            <option value="sut">Sut mahsulotlari</option>
+            <option value="uy">Uy-ro'zg'or</option>
+            <option value="gigiyena">Gigiyena</option>
+            <option value="boshqa">Boshqa</option>
+          </select>
+        </div>
+        <input type="hidden" id="editProductId" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('addProductModal')">Bekor qilish</button>
+        <button class="btn-primary" onclick="saveProduct()">Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Checkout Modal -->
+  <div class="modal-overlay" id="checkoutModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>To'lov</h3>
+        <button class="modal-close" onclick="closeModal('checkoutModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="checkout-total-display">
+          <span>Jami summa</span>
+          <div class="checkout-amount" id="checkoutAmount">0 so'm</div>
+        </div>
+        <div class="payment-methods">
+          <h4>To'lov usuli</h4>
+          <div class="payment-grid">
+            <button class="payment-method active" id="pm-cash" onclick="selectPayment('cash')">Naqd</button>
+            <button class="payment-method" id="pm-card" onclick="selectPayment('card')">Karta</button>
+            <button class="payment-method" id="pm-transfer" onclick="selectPayment('transfer')">O'tkazma</button>
+          </div>
+        </div>
+        <div class="cash-change-section" id="cashChangeSection">
+          <div class="form-group">
+            <label>Mijoz berdi (so'm)</label>
+            <input type="number" id="cashGiven" placeholder="0" oninput="calcChange()" />
+          </div>
+          <div class="change-display" id="changeDisplay" style="display:none;">
+            <span>Qaytim:</span>
+            <span id="changeAmount" class="change-amount-text">0 so'm</span>
+          </div>
+        </div>
+        <div class="form-group" id="discountSection" style="display:none;">
+          <label>Chegirma (%)</label>
+          <input type="number" id="discountPercent" placeholder="0" min="0" max="100" oninput="applyDiscount()" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('checkoutModal')">Orqaga</button>
+        <button class="btn-success" onclick="completeSale()">Tasdiqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bill Detail Modal -->
+  <div class="modal-overlay" id="billDetailModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Chek tafsiloti</h3>
+        <button class="modal-close" onclick="closeModal('billDetailModal')">✕</button>
+      </div>
+      <div class="modal-body" id="billDetailBody"></div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('billDetailModal')">Yopish</button>
+        <button class="btn-primary" onclick="printBill()">Chop etish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toastMsg"></div>
+
+  <!-- Scan Success Overlay -->
+  <div class="scan-success-overlay" id="scanSuccessOverlay">
+    <div class="scan-success-content">
+      <div class="scan-success-icon">✅</div>
+      <div class="scan-success-name" id="scanSuccessName"></div>
+      <div class="scan-success-price" id="scanSuccessPrice"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
