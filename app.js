@@ -347,6 +347,18 @@ function handleBarcodeDetected(code) {
   // Flash effekti
   flashScanner();
 
+  // ─── Modal uchun skaner rejimi ───
+  // scanForModal() chaqirilganda navbatdagi skanlangan kodni modal ga yozamiz
+  if (APP._scanForModal) {
+    APP._scanForModal = false;
+    const barcodeInput = document.getElementById('productBarcode');
+    if (barcodeInput) barcodeInput.value = code;
+    openModal('addProductModal');
+    showToast(`✅ Kod kiritildi: ${code}`);
+    updateScanHint('Shtrix-kodni ramka ichiga oling', '');
+    return;
+  }
+
   // Mahsulotni qidirish
   const product = findProductByBarcode(code);
 
@@ -369,14 +381,12 @@ function handleBarcodeDetected(code) {
         updateScanHint(`✅ Internetdan topildi: ${result.name}`, 'success');
         showToast(`✅ "${result.name}" topildi! Narxni kiriting.`);
         vibrateDevice([80, 40, 80]);
-        // Modalni ochib, ma'lumotlarni to'ldirish
         openAddProductModalWithData(result, code);
       } else {
         // ❌ Internetda ham topilmadi
         showProductFoundCard(null, code);
         updateScanHint(`❌ Kod: ${code} — hech qayerda topilmadi`, 'error');
         showToast(`❌ "${code}" topilmadi. Qo'lda kiriting.`);
-        // Yangi mahsulot qo'shish modali
         openAddProductModalWithData({ name: '', image: null, category: 'boshqa', brand: '' }, code);
       }
     }).catch(() => {
@@ -385,7 +395,7 @@ function handleBarcodeDetected(code) {
     });
   }
 
-  // 2 soniyadan keyin hint qaytarish
+  // 6 soniyadan keyin hint qaytarish
   setTimeout(() => updateScanHint('Shtrix-kodni ramka ichiga oling', ''), 6000);
 }
 
@@ -503,6 +513,7 @@ function changeQty(productId, delta) {
 
 function clearCart() {
   if (APP.cart.length === 0) return;
+  if (!confirm('Savatni tozalashni tasdiqlaysizmi?')) return;
   APP.cart = [];
   updateCartUI();
   showToast('Savat tozalandi');
@@ -607,9 +618,11 @@ function proceedToCheckout() {
 function selectPayment(type) {
   APP.selectedPayment = type;
   ['cash', 'card', 'transfer'].forEach(t => {
-    document.getElementById(`pm-${t}`).classList.toggle('active', t === type);
+    const el = document.getElementById(`pm-${t}`);
+    if (el) el.classList.toggle('active', t === type);
   });
-  document.getElementById('cashChangeSection').style.display = type === 'cash' ? 'block' : 'none';
+  const cashSection = document.getElementById('cashChangeSection');
+  if (cashSection) cashSection.style.display = type === 'cash' ? 'block' : 'none';
 }
 
 function calcChange() {
@@ -1145,9 +1158,9 @@ function updateProductStats() {
 function scanForModal() {
   closeModal('addProductModal');
   showPage('scanner');
-  showToast('Shtrix-kodni skanerlang — u avtomatik kiritiladi');
-  // Keyingi skanlashda barcode ni modal input ga yozish
   APP._scanForModal = true;
+  showToast('📷 Shtrix-kodni kameraga ko\'rsating — avtomatik kiritiladi');
+  updateScanHint('📋 Modal uchun skanerlash rejimi...', 'success');
 }
 
 // ─────────────────────────────────────────────
@@ -1481,8 +1494,10 @@ let hwBuffer = '';
 let hwTimer = null;
 
 document.addEventListener('keydown', (e) => {
-  // Modal ochiq bo'lsa — ignore
+  // Modal ochiq bo'lsa yoki input/textarea ga fokus bo'lsa — ignore
   if (document.querySelector('.modal-overlay.open')) return;
+  const focused = document.activeElement;
+  if (focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.tagName === 'SELECT')) return;
 
   if (e.key === 'Enter' && hwBuffer.length > 4) {
     handleBarcodeDetected(hwBuffer);
@@ -1491,7 +1506,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key.length === 1) {
+  if (e.key.length === 1 && /[\w\d]/.test(e.key)) {
     hwBuffer += e.key;
     clearTimeout(hwTimer);
     hwTimer = setTimeout(() => { hwBuffer = ''; }, 300);
@@ -1502,7 +1517,8 @@ document.addEventListener('keydown', (e) => {
 //  MODAL OUTSIDE CLICK
 // ─────────────────────────────────────────────
 document.addEventListener('click', (e) => {
-  if (e.target.classList.contains('modal-overlay')) {
+  // Faqat to'g'ridan-to'g'ri overlay ga bosilganda yopilsin (modal ichidagi elementlarga emas)
+  if (e.target.classList.contains('modal-overlay') && e.target.id) {
     closeModal(e.target.id);
   }
 });
@@ -1547,6 +1563,7 @@ window.openModal = openModal;
 window.closeModal = closeModal;
 window.showToast = showToast;
 window.saveSettings = saveSettings;
+window.renderBills = renderBills;
 
 // ─────────────────────────────────────────────
 //  ANALYTICS MODULE
@@ -1816,11 +1833,9 @@ window.showPage = function (page) {
 };
 
 // Bills yangilanganda analytics ham yangilansin
-const _origRenderBills = window.renderBills || (() => {});
 window.renderAnalyticsIfOpen = function () {
   if (APP.currentPage === 'analytics') renderAnalytics();
 };
 
 window.switchAnalyticsPeriod = window.switchAnalyticsPeriod;
 window.renderAnalytics = renderAnalytics;
-
