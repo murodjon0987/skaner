@@ -380,21 +380,19 @@
                   class="toggle-slider"></span></label>
             </div>
             <div class="settings-item toggle-item">
-              <label>Ovozli e'lon</label>
+              <div>
+                <label style="display:block;margin-bottom:2px;">Skaner tovushi (Korzinka "Tiq!")</label>
+                <span style="font-size:0.75rem;color:var(--text3);">Shtrix-kod skanlanganda "tiq" qiladi</span>
+              </div>
               <label class="toggle-switch"><input type="checkbox" id="voiceEnabled" checked
                   onchange="saveSettings(); updateVoiceBtn()" /><span class="toggle-slider"></span></label>
             </div>
-            <div class="settings-item toggle-item">
-              <label>Ovoz tili</label>
-              <select id="voiceLang" onchange="saveSettings()">
-                <option value="uz-UZ">O'zbekcha</option>
-                <option value="ru-RU">Ruscha</option>
-                <option value="en-US">Inglizcha</option>
-              </select>
-            </div>
             <div class="settings-item toggle-item" style="padding: 10px 14px;">
-              <label>Skaner ovozini sinash</label>
-              <button type="button" class="btn-secondary" style="padding:6px 12px;font-size:0.75rem;" onclick="SOUNDS.beep(); announceVoice('Test mahsulot', 5000); showToast('🔊 Bip va ovoz sinovi');">🔊 Tovushni sinash</button>
+              <div>
+                <label style="display:block;margin-bottom:2px;">"Tiq" ovozini sinash</label>
+                <span style="font-size:0.75rem;color:var(--text3);">Supermarket skaner signali</span>
+              </div>
+              <button type="button" class="btn-secondary" style="padding:6px 14px;font-size:0.75rem;border-radius:20px;font-weight:600;" onclick="SOUNDS.tiq(); showToast('🛒 Tiq! (Korzinka skaner ovozi)');">🛒 "Tiq!" sinovi</button>
             </div>
           </div>
           <h3 class="settings-group-title">Firebase holati</h3>

@@ -553,10 +553,9 @@ function handleBarcodeDetected(rawCode) {
   const product = findProductByBarcode(code);
 
   if (product) {
-    // ✅ Topildi — savatga qo'sh
+    // ✅ Topildi — savatga qo'sh (addToCart o'zi SOUNDS.tiq() tovushini beradi)
     addToCart(product);
     showScanSuccess(product);
-    announceVoice(product.name, product.price);
     updateScanHint(`✅ ${product.name}`, 'success');
   } else {
     // ❌ Mahalliy bazada topilmadi — internetdan qidiramiz
@@ -648,7 +647,7 @@ function searchManualBarcode() {
   const product = findProductByBarcode(code);
   if (product) {
     showProductFoundCard(product, code);
-    announceVoice(product.name, product.price);
+    SOUNDS.tiq();
   } else {
     showToast(`"${code}" — topilmadi`);
     showProductFoundCard(null, code);
@@ -698,8 +697,8 @@ function addFoundProductToCart() {
 //  CART (SAVAT)
 // ─────────────────────────────────────────────
 function addToCart(product) {
-  // Tovush berish (Supermarket kassa skaneri bipi)
-  if (typeof SOUNDS !== 'undefined') SOUNDS.beep();
+  // Tovush berish (Korzinka kassa skaneri "TIQ!" tovushi)
+  if (typeof SOUNDS !== 'undefined') SOUNDS.tiq();
 
   const existing = APP.cart.find(i => i.id === product.id);
   if (existing) {
@@ -905,9 +904,6 @@ async function completeSale() {
   // Kassa pul qutisi jiringlashi
   SOUNDS.cash();
 
-  // Ovozli e'lon
-  announceVoice(`Jami ${formatPriceVoice(grand)}. To'lov qabul qilindi!`, 0);
-
   closeModal('checkoutModal');
   APP.cart = [];
   updateCartUI();
@@ -921,10 +917,15 @@ async function completeSale() {
 }
 
 // ─────────────────────────────────────────────
-//  AUDIO ENGINE (Web Audio API – BEEP & SOUNDS)
 // ─────────────────────────────────────────────
+//  AUDIO ENGINE (Haqiqiy Korzinka Skaner "TIQ!" Tovushi)
+// ─────────────────────────────────────────────
+// Korzinka Datalogic/Honeywell 2800Hz 48ms kassa skaneri "TIQ!" signali (Base64 WAV)
+const KORZINKA_SCAN_WAV = 'data:audio/wav;base64,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';
+
 const SOUNDS = {
   ctx: null,
+  audioEl: null,
 
   init() {
     try {
@@ -938,6 +939,17 @@ const SOUNDS = {
     } catch (e) {
       console.warn('AudioContext init error:', e);
     }
+    this.initAudioEl();
+  },
+
+  initAudioEl() {
+    if (!this.audioEl && typeof Audio !== 'undefined') {
+      try {
+        this.audioEl = new Audio(KORZINKA_SCAN_WAV);
+        this.audioEl.preload = 'auto';
+        this.audioEl.volume = 1.0;
+      } catch (e) {}
+    }
   },
 
   getContext() {
@@ -949,35 +961,73 @@ const SOUNDS = {
   },
 
   /**
-   * Supermarket kassa skaneri bipi (Loud & Crisp POS Barcode Beep)
-   * 2400Hz -> 1800Hz chastotada 80ms davom etuvchi tiniq va baland signal.
+   * Haqiqiy Korzinka supermarket kassa skaneri "TIQ!" tovushi
+   * 2800Hz kristal chastotada 48ms davom etuvchi o'tkir zarbali skaner signali.
    */
-  beep() {
+  tiq() {
     if (!APP.voiceOn) return;
+
+    let played = false;
+    // 1-USUL: Web Audio API (eng yuqori sifat, 0ms kechikish)
     try {
       const ctx = this.getContext();
-      if (!ctx) return;
+      if (ctx) {
+        const now = ctx.currentTime;
 
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+        // Asosiy 2800Hz supermarket skaner toni
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
 
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(2400, now);
-      osc.frequency.exponentialRampToValueAtTime(1850, now + 0.075);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(2800, now);
 
-      gain.gain.setValueAtTime(0.001, now);
-      gain.gain.linearRampToValueAtTime(0.65, now + 0.008);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.95, now + 0.002);
+        gain.gain.setValueAtTime(0.95, now + 0.038);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.048);
 
-      osc.connect(gain);
-      gain.connect(ctx.destination);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
 
-      osc.start(now);
-      osc.stop(now + 0.085);
+        // Boshidagi mexanik "T" chertkisi (piezo zarbasi)
+        const clickOsc = ctx.createOscillator();
+        const clickGain = ctx.createGain();
+        clickOsc.type = 'triangle';
+        clickOsc.frequency.setValueAtTime(4200, now);
+        clickOsc.frequency.exponentialRampToValueAtTime(1200, now + 0.005);
+        clickGain.gain.setValueAtTime(0.5, now);
+        clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.005);
+        clickOsc.connect(clickGain);
+        clickGain.connect(ctx.destination);
+
+        clickOsc.start(now);
+        clickOsc.stop(now + 0.006);
+
+        osc.start(now);
+        osc.stop(now + 0.050);
+        played = true;
+      }
     } catch (e) {
-      console.warn('Audio beep error:', e);
+      console.warn('WebAudio error, trying audio element:', e);
     }
+
+    // 2-USUL: Audio Element (Mobil telefonlarda AudioContext bloklangan bo'lsa kafolatli)
+    try {
+      this.initAudioEl();
+      if (this.audioEl) {
+        const clone = this.audioEl.cloneNode();
+        clone.volume = 1.0;
+        clone.play().catch(() => {});
+      }
+    } catch (e) {}
+
+    // Taktil titrash (Korzinka apparatlaridagi kabi qo'lda his qilinadi)
+    vibrateDevice([40]);
+  },
+
+  // beep() ni tiq() ga tenglashtiramiz
+  beep() {
+    this.tiq();
   },
 
   /**
@@ -1082,10 +1132,12 @@ const SOUNDS = {
 });
 
 // ─────────────────────────────────────────────
-//  VOICE (OVOZLI E'LON)
+//  VOICE (GAPIRUVCHI ROBOT OVOZI)
 // ─────────────────────────────────────────────
 function announceVoice(name, price) {
-  if (!APP.voiceOn) return;
+  // Foydalanuvchi talabiga asosan: skaner qilganda robot ovozi sukut bo'yicha O'CHIRILGAN!
+  // Skanerda faqat Karzinkadagi kabi "TIQ!" tovushi chiqadi.
+  if (!APP.settings.robotSpeechEnabled) return;
   if (!window.speechSynthesis) return;
 
   try {
@@ -1115,7 +1167,6 @@ function announceVoice(name, price) {
   utt.pitch = 1.0;
   utt.volume = 1.0;
 
-  // Mavjud ovozlardan eng yaxshisini tanlash
   const voices = window.speechSynthesis.getVoices();
   if (voices && voices.length > 0) {
     const langPrefix = lang.split('-')[0].toLowerCase();
@@ -1149,10 +1200,14 @@ function formatPriceVoice(amount) {
 function toggleVoice() {
   APP.voiceOn = !APP.voiceOn;
   APP.settings.voiceEnabled = APP.voiceOn;
-  document.getElementById('voiceEnabled').checked = APP.voiceOn;
+  const chk = document.getElementById('voiceEnabled');
+  if (chk) chk.checked = APP.voiceOn;
   saveSettings();
   updateVoiceBtn();
-  showToast(APP.voiceOn ? '🔊 Ovoz yoqildi' : '🔇 Ovoz o\'chirildi');
+  if (APP.voiceOn) {
+    SOUNDS.tiq();
+  }
+  showToast(APP.voiceOn ? '🔊 Skaner "Tiq" ovozi yoqildi' : '🔇 Skaner ovozi o\'chirildi');
 }
 
 function updateVoiceBtn() {
@@ -1161,6 +1216,7 @@ function updateVoiceBtn() {
   if (!btn) return;
   if (APP.voiceOn) {
     btn.classList.add('active');
+    btn.setAttribute('title', 'Skaner ovozi: Yoqilgan (Tiq!)');
     btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
       <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
@@ -1168,6 +1224,7 @@ function updateVoiceBtn() {
     </svg>`;
   } else {
     btn.classList.remove('active');
+    btn.setAttribute('title', 'Skaner ovozi: O\'chirilgan');
     btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
       <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
@@ -1708,9 +1765,8 @@ async function saveProduct() {
     SOUNDS.pop();
     showToast(`✅ ${name} saqlandi! Toifadagi ${syncedCount} ta mahsulot narxi ham ${formatPrice(roundedPrice)} ga yangilandi!`);
   } else if (!APP.editingProductId) {
-    // Yangi mahsulot — bip ovozi va ovozli e'lon
-    SOUNDS.beep();
-    announceVoice(name, roundedPrice);
+    // Yangi mahsulot — Korzinka skaneri "TIQ!" tovushi
+    SOUNDS.tiq();
     showToast(`✅ ${name} saqlandi! Endi skanlashda avtomatik taniladi.`);
   } else {
     SOUNDS.pop();
