@@ -47,11 +47,11 @@ let zxingReader = null;
  * @returns {Promise<{name, image, category, brand}|null>}
  */
 async function lookupBarcodeOnline(barcode) {
-  // 1. OpenFoodFacts (world.openfoodfacts.org)
+  // 1. OpenFoodFacts (oziq-ovqat)
   try {
     const res = await fetch(
       `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=product_name,brands,image_front_url,categories_tags`,
-      { signal: AbortSignal.timeout(5000) }
+      { signal: AbortSignal.timeout(6000) }
     );
     if (res.ok) {
       const data = await res.json();
@@ -72,11 +72,11 @@ async function lookupBarcodeOnline(barcode) {
     console.warn('OpenFoodFacts xato:', e.message);
   }
 
-  // 2. OpenBeautyFacts (gigiyena mahsulotlari)
+  // 2. OpenBeautyFacts (gigiyena)
   try {
     const res2 = await fetch(
       `https://world.openbeautyfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=product_name,brands,image_front_url`,
-      { signal: AbortSignal.timeout(5000) }
+      { signal: AbortSignal.timeout(6000) }
     );
     if (res2.ok) {
       const data2 = await res2.json();
@@ -97,6 +97,57 @@ async function lookupBarcodeOnline(barcode) {
     console.warn('OpenBeautyFacts xato:', e.message);
   }
 
+  // 3. UPC Item DB — global UPC/EAN baza (CIS, Osiyo mahsulotlari ham bor)
+  try {
+    const res3 = await fetch(
+      `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(barcode)}`,
+      {
+        signal: AbortSignal.timeout(6000),
+        headers: { 'Accept': 'application/json' }
+      }
+    );
+    if (res3.ok) {
+      const data3 = await res3.json();
+      const item = data3.items?.[0];
+      if (item && item.title) {
+        const catGuess = detectCategoryFromName(item.title + ' ' + (item.category || '') + ' ' + (item.brand || ''));
+        return {
+          name: item.title.trim(),
+          brand: item.brand || '',
+          image: item.images?.[0] || null,
+          category: catGuess,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('UPC Item DB xato:', e.message);
+  }
+
+  // 4. Open Food Facts search (nom bo'yicha emas, barcode bo'yicha — alternativ endpoint)
+  try {
+    const res4 = await fetch(
+      `https://world.openfoodfacts.org/product/${encodeURIComponent(barcode)}.json`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (res4.ok) {
+      const data4 = await res4.json();
+      if (data4.status === 1 && data4.product) {
+        const p = data4.product;
+        const name = p.product_name_en || p.product_name_ru || p.product_name || p.brands || '';
+        if (name) {
+          return {
+            name: name.trim(),
+            brand: p.brands || '',
+            image: p.image_front_url || p.image_url || null,
+            category: detectCategory(p.categories_tags || [], detectCategoryFromName(name)),
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('OFF alternativ xato:', e.message);
+  }
+
   return null;
 }
 
@@ -110,6 +161,18 @@ function detectCategory(tags, fallback) {
   if (/cleaning|detergent|household/.test(str)) return 'uy';
   if (/beauty|cosmetic|shampoo|soap|hygiene/.test(str)) return 'gigiyena';
   return fallback || 'boshqa';
+}
+
+/** Mahsulot nomi bo'yicha kategoriya taxmin qilish */
+function detectCategoryFromName(name) {
+  const n = (name || '').toLowerCase();
+  if (/water|suv|вода|drink|juice|cola|pepsi|sprite|fanta|soda|tea|choy|кофе|coffee|energy|redbull|lipton/.test(n)) return 'ichimlik';
+  if (/milk|sut|сут|молоко|kefir|yogurt|qatiq|cheese|пишлоқ/.test(n)) return 'sut';
+  if (/chocolate|шоколад|candy|konfet|конфет|snicker|twix|kitkat|oreo|cookie|biscuit|chip|crisp|sweet|shirinlik/.test(n)) return 'shirinlik';
+  if (/bread|non|хлеб|rice|guruch|pasta|macaroni|flour|un|cereal|oat/.test(n)) return 'oziq';
+  if (/shampoo|soap|sovun|toothpaste|тиш|дезодорант|deodorant|parfum|atir|cream|крем|lotion/.test(n)) return 'gigiyena';
+  if (/washing|кир|detergent|clean|bleach|domestos|fairy|tide|ariel/.test(n)) return 'uy';
+  return 'boshqa';
 }
 
 
@@ -833,32 +896,56 @@ function showAddProductModal(product = null) {
  */
 function openAddProductModalWithData(onlineData, barcode) {
   APP.editingProductId = null;
-  document.getElementById('modalTitle').textContent = '🌐 Internetdan topildi';
+
+  const isFound = !!(onlineData.name && onlineData.name.trim());
+
+  // Modal sarlavhasi: topilgan yoki topilmagan
+  document.getElementById('modalTitle').textContent = isFound
+    ? '🌐 Internetdan topildi'
+    : '➕ Yangi mahsulot qo\'shish';
+
   document.getElementById('productName').value = onlineData.name || '';
   document.getElementById('productBarcode').value = barcode || '';
   document.getElementById('productPrice').value = '';
   document.getElementById('productStock').value = '0';
-  document.getElementById('productCategory').value = onlineData.category || 'boshqa';
+  // Kategoriyani nomdan ham aniqlashga harakat qilamiz
+  const catFromName = onlineData.name ? detectCategoryFromName(onlineData.name) : 'boshqa';
+  document.getElementById('productCategory').value = onlineData.category && onlineData.category !== 'boshqa'
+    ? onlineData.category
+    : catFromName;
   document.getElementById('editProductId').value = '';
 
-  // Haqiqiy topilgan rasm
+  // Rasm
   setModalProductImage(onlineData.image || null);
 
-  // "Internet dan topildi" badge
+  // Badge — faqat topilganda ko'rsat
   const existingBadge = document.getElementById('onlineBadge');
   if (existingBadge) existingBadge.remove();
-  if (onlineData.name) {
+
+  const modalBody = document.querySelector('#addProductModal .modal-body');
+  if (modalBody && isFound) {
     const badge = document.createElement('div');
     badge.id = 'onlineBadge';
     badge.style.cssText = 'background:linear-gradient(135deg,rgba(34,197,94,0.2),rgba(6,182,212,0.2));border:1px solid rgba(34,197,94,0.4);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:0.8rem;color:#22c55e;display:flex;align-items:center;gap:6px';
-    badge.innerHTML = `🌐 <span>Ma'lumot internetdan avtomatik to'ldirildi${onlineData.brand ? ' — ' + escHtml(onlineData.brand) : ''}</span>`;
-    const modalBody = document.querySelector('#addProductModal .modal-body');
-    if (modalBody) modalBody.insertBefore(badge, modalBody.firstChild);
+    badge.innerHTML = `🌐 <span>Internetdan avtomatik to'ldirildi${onlineData.brand ? ' — ' + escHtml(onlineData.brand) : ''}</span>`;
+    modalBody.insertBefore(badge, modalBody.firstChild);
+  } else if (modalBody && !isFound) {
+    // Topilmadi — sariq ogohlantirish badge
+    const badge = document.createElement('div');
+    badge.id = 'onlineBadge';
+    badge.style.cssText = 'background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:0.8rem;color:#f59e0b;display:flex;align-items:center;gap:6px';
+    badge.innerHTML = `⚠️ <span>Bu mahsulot internet bazasida topilmadi. Nomni o'zingiz kiriting — keyingi skanerlashda avtomatik taniladi!</span>`;
+    modalBody.insertBefore(badge, modalBody.firstChild);
   }
 
-  // Narx maydoniga focus
   openModal('addProductModal');
-  setTimeout(() => document.getElementById('productPrice')?.focus(), 300);
+  // Topilmagan bo'lsa nom maydoniga, topilgan bo'lsa narx maydoniga fokus
+  setTimeout(() => {
+    const focusEl = isFound
+      ? document.getElementById('productPrice')
+      : document.getElementById('productName');
+    focusEl?.focus();
+  }, 350);
 }
 
 /** Modal ichidagi mahsulot rasmini o'rnatish va prevyu qilish */
@@ -1038,7 +1125,13 @@ async function saveProduct() {
 
   await saveProductToDB(product);
   closeModal('addProductModal');
-  showToast(APP.editingProductId ? `${name} yangilandi` : `${name} qo'shildi ✅`);
+
+  if (!APP.editingProductId) {
+    // Yangi mahsulot — keyingi skanlashda avtomatik savatga qo'shilishini eslatish
+    showToast(`✅ ${name} saqlandi! Endi skanlashda avtomatik taniladi.`);
+  } else {
+    showToast(`✅ ${name} yangilandi`);
+  }
 }
 
 async function saveProductToDB(product) {
