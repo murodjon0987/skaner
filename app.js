@@ -19,7 +19,9 @@ const APP = {
   products: [],         // barcha mahsulotlar
   bills: [],            // cheklar tarixi
   settings: {},         // sozlamalar
-  categoryPrices: {},   // toifalar bo'yicha standart narxlar (avtomatik eslab qolish)
+  categoryPrices: {},   // toifalar bo‘yicha standart narxlar (avtomatik eslab qolish)
+  debtors: [],          // { id, name, phone, note, createdAt }
+  debts: [],            // { id, debtorId, amount, paidAmount, description, dueDate, createdAt, payments:[] }
   currentPage: 'scanner',
   cameraStream: null,
   scanning: false,
@@ -27,13 +29,13 @@ const APP = {
   barcodeDetector: null,
   lastScanned: '',
   lastScannedTime: 0,
-  scanCooldown: 2000,   // ms — bir xil kodni qayta o'qimaslik
+  scanCooldown: 2000,   // ms — bir xil kodni qayta o‘qimaslik
   voiceOn: true,
   selectedPayment: 'cash',
   editingProductId: null,
   foundProduct: null,
   torchOn: false,       // Kamera fonari (torch)
-  quickItems: [],       // Tezkor kodsiz tovarlar ro'yxati
+  quickItems: [],       // Tezkor kodsiz tovarlar ro‘yxati
   currentBillForPrint: null,
   _currentLinkTargetId: null,
 };
@@ -2926,3 +2928,325 @@ window.renderAnalyticsIfOpen = function () {
 
 window.switchAnalyticsPeriod = window.switchAnalyticsPeriod;
 window.renderAnalytics = renderAnalytics;
+
+// ═════════════════════════════════════════════
+//  NASIYA DAFTAR MODULE
+// ═════════════════════════════════════════════
+
+// ── Ma'lumotlarni yuklash / saqlash ──
+function loadNasiyaData() {
+  try {
+    const d = localStorage.getItem('scanpos_debtors');
+    const t = localStorage.getItem('scanpos_debts');
+    if (d) APP.debtors = JSON.parse(d);
+    if (t) APP.debts = JSON.parse(t);
+  } catch (e) { console.warn('Nasiya yuklash xato:', e); }
+}
+
+function saveNasiyaData() {
+  try {
+    localStorage.setItem('scanpos_debtors', JSON.stringify(APP.debtors));
+    localStorage.setItem('scanpos_debts', JSON.stringify(APP.debts));
+  } catch (e) { console.warn('Nasiya saqlash xato:', e); }
+}
+
+// ── Statistika badge ──
+function updateNasiyaBadge() {
+  const badge = document.getElementById('nasiyaBadge');
+  if (!badge) return;
+  const activeDebts = APP.debtors.filter(d => debtorBalance(d.id) > 0);
+  if (activeDebts.length > 0) {
+    badge.textContent = activeDebts.length > 99 ? '99+' : activeDebts.length;
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// Qazdor uchun qolgan qarz miqdori
+function debtorBalance(debtorId) {
+  return APP.debts
+    .filter(d => d.debtorId === debtorId)
+    .reduce((sum, d) => sum + (d.amount - d.paidAmount), 0);
+}
+
+// Jami qarzlar (barcha mijozlar)
+function totalDebtSum() {
+  return APP.debts.reduce((sum, d) => sum + Math.max(0, d.amount - d.paidAmount), 0);
+}
+
+// ── Nasiya sahifasi statistikasini yangilash ──
+function updateNasiyaStats() {
+  const today = new Date().toDateString();
+  const totalDebt = totalDebtSum();
+  const debtorCount = APP.debtors.filter(d => debtorBalance(d.id) > 0).length;
+  const todayPaid = APP.debts.reduce((sum, d) => {
+    const todayPayments = (d.payments || []).filter(p =>
+      new Date(p.date).toDateString() === today
+    );
+    return sum + todayPayments.reduce((s, p) => s + p.amount, 0);
+  }, 0);
+
+  const el1 = document.getElementById('nasiyaTotalDebt');
+  const el2 = document.getElementById('nasiyaDebtorCount');
+  const el3 = document.getElementById('nasiyaTodayPaid');
+  if (el1) el1.textContent = formatPriceShort(totalDebt);
+  if (el2) el2.textContent = debtorCount;
+  if (el3) el3.textContent = formatPriceShort(todayPaid);
+  updateNasiyaBadge();
+}
+
+// ── Qarzdorlar ro'yxatini render qilish ──
+function renderDebtors(list) {
+  const container = document.getElementById('debtorList');
+  if (!container) return;
+  const debtors = list || APP.debtors;
+
+  if (debtors.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div style="font-size:3rem">📒</div>
+        <p>Nasiya daftar bo'sh</p>
+        <span style="font-size:0.8rem;color:var(--text3)">"+ Yangi mijoz" tugmasini bosing</span>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = debtors.map(debtor => {
+    const balance = debtorBalance(debtor.id);
+    const debtorDebts = APP.debts.filter(d => d.debtorId === debtor.id);
+    const totalGiven = debtorDebts.reduce((s, d) => s + d.amount, 0);
+    const totalPaid = debtorDebts.reduce((s, d) => s + d.paidAmount, 0);
+    const isPaid = balance <= 0;
+    const statusClass = isPaid ? 'debtor-paid' : (balance > 100000 ? 'debtor-danger' : 'debtor-warn');
+    const statusEmoji = isPaid ? '✅' : '🔴';
+
+    return `
+    <div class="debtor-card ${statusClass}">
+      <div class="debtor-card-main" onclick="toggleDebtorDetail('${debtor.id}')">
+        <div class="debtor-avatar">${debtor.name[0].toUpperCase()}</div>
+        <div class="debtor-info">
+          <div class="debtor-name">${escHtml(debtor.name)} <span class="debtor-status">${statusEmoji}</span></div>
+          <div class="debtor-meta">
+            ${debtor.phone ? `<a href="tel:${debtor.phone}" onclick="event.stopPropagation()">📞 ${debtor.phone}</a>` : '👤 Telefon yo\'q'}
+          </div>
+        </div>
+        <div class="debtor-balance">
+          <div class="debtor-balance-val ${isPaid ? 'debt-zero' : 'debt-active'}">${formatPrice(balance)}</div>
+          <div class="debtor-balance-label">qarz</div>
+        </div>
+      </div>
+
+      <!-- Tafsilot panel -->
+      <div class="debtor-detail" id="detail-${debtor.id}" style="display:none">
+        <div class="debtor-detail-stats">
+          <span>💸 Berildi: <b>${formatPrice(totalGiven)}</b></span>
+          <span>✅ To'landi: <b>${formatPrice(totalPaid)}</b></span>
+        </div>
+        <div class="debtor-actions">
+          <button class="btn-primary btn-sm" onclick="openAddDebtModal('${debtor.id}', '${escHtml(debtor.name)}'); event.stopPropagation()">
+            + Nasiya
+          </button>
+          <button class="btn-secondary btn-sm" onclick="editDebtor('${debtor.id}'); event.stopPropagation()">
+            ✏️ Tahrirlash
+          </button>
+          <button class="btn-danger btn-sm" onclick="deleteDebtor('${debtor.id}'); event.stopPropagation()">
+            🗑️ O'chirish
+          </button>
+        </div>
+        <!-- Nasiyalar ro'yxati -->
+        <div class="debt-items">
+          ${debtorDebts.length === 0 ? '<p style="color:var(--text3);font-size:0.85rem">Nasiya yo\'q</p>' : debtorDebts.map(dt => {
+            const dtBalance = dt.amount - dt.paidAmount;
+            const dtDate = new Date(dt.createdAt).toLocaleDateString('uz-UZ');
+            const isOverdue = dt.dueDate && new Date(dt.dueDate) < new Date() && dtBalance > 0;
+            return `
+            <div class="debt-item ${dtBalance <= 0 ? 'debt-item-paid' : isOverdue ? 'debt-item-overdue' : ''}">
+              <div class="debt-item-info">
+                <div class="debt-item-desc">${escHtml(dt.description || 'Nasiya')}</div>
+                <div class="debt-item-date">${dtDate}${dt.dueDate ? ` • Muddat: ${new Date(dt.dueDate).toLocaleDateString('uz-UZ')}${isOverdue ? ' ⚠️' : ''}` : ''}</div>
+              </div>
+              <div class="debt-item-right">
+                <div class="debt-item-bal ${dtBalance <= 0 ? 'debt-zero' : ''}">Qoldi: ${formatPrice(dtBalance)}</div>
+                ${dtBalance > 0 ? `<button class="btn-success btn-xs" onclick="openPayDebtModal('${dt.id}'); event.stopPropagation()">💵 To'lash</button>` : '<span style="color:var(--success);font-size:0.75rem">✅ To\'langan</span>'}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleDebtorDetail(debtorId) {
+  const el = document.getElementById(`detail-${debtorId}`);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function filterDebtors(query) {
+  const q = (query || '').toLowerCase();
+  const filtered = q
+    ? APP.debtors.filter(d =>
+        d.name.toLowerCase().includes(q) ||
+        (d.phone || '').includes(q)
+      )
+    : APP.debtors;
+  renderDebtors(filtered);
+}
+
+// ── Mijoz (debtor) CRUD ──
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('open');
+}
+
+function saveDebtor() {
+  const name = document.getElementById('debtorName').value.trim();
+  if (!name) { showToast('⚠️ Ism kiritilishi shart'); return; }
+
+  const existingId = document.getElementById('debtorId').value;
+  const phone = document.getElementById('debtorPhone').value.trim();
+  const note = document.getElementById('debtorNote').value.trim();
+
+  if (existingId) {
+    const d = APP.debtors.find(x => x.id === existingId);
+    if (d) { d.name = name; d.phone = phone; d.note = note; }
+    showToast(`✅ ${name} yangilandi`);
+  } else {
+    APP.debtors.unshift({ id: generateId(), name, phone, note, createdAt: new Date().toISOString() });
+    showToast(`✅ ${name} qo'shildi`);
+  }
+
+  saveNasiyaData();
+  closeModal('addDebtorModal');
+  renderDebtors();
+  updateNasiyaStats();
+}
+
+function editDebtor(debtorId) {
+  const d = APP.debtors.find(x => x.id === debtorId);
+  if (!d) return;
+  document.getElementById('debtorId').value = d.id;
+  document.getElementById('debtorName').value = d.name;
+  document.getElementById('debtorPhone').value = d.phone || '';
+  document.getElementById('debtorNote').value = d.note || '';
+  document.getElementById('debtorModalTitle').textContent = 'Mijozni tahrirlash';
+  openModal('addDebtorModal');
+}
+
+function deleteDebtor(debtorId) {
+  const d = APP.debtors.find(x => x.id === debtorId);
+  if (!d) return;
+  if (debtorBalance(debtorId) > 0) {
+    if (!confirm(`⚠️ "${d.name}" da ${formatPrice(debtorBalance(debtorId))} qarz bor! Baribir o'chirishni xohlaysizmi?`)) return;
+  } else {
+    if (!confirm(`"${d.name}" ni o'chirishni tasdiqlaysizmi?`)) return;
+  }
+  APP.debtors = APP.debtors.filter(x => x.id !== debtorId);
+  APP.debts = APP.debts.filter(x => x.debtorId !== debtorId);
+  saveNasiyaData();
+  renderDebtors();
+  updateNasiyaStats();
+  showToast('🗑️ O\'chirildi');
+}
+
+// ── Nasiya CRUD ──
+function openAddDebtModal(debtorId, debtorName) {
+  document.getElementById('debtCustomerId').value = debtorId;
+  document.getElementById('addDebtTitle').textContent = `💸 Nasiya — ${debtorName}`;
+  document.getElementById('debtAmount').value = '';
+  document.getElementById('debtDescription').value = '';
+  document.getElementById('debtDueDate').value = '';
+  openModal('addDebtModal');
+}
+
+function recordDebt() {
+  const debtorId = document.getElementById('debtCustomerId').value;
+  const amount = parseFloat(document.getElementById('debtAmount').value) || 0;
+  if (!debtorId || amount <= 0) { showToast('⚠️ Miqdor kiritilishi shart'); return; }
+
+  const debt = {
+    id: generateId(),
+    debtorId,
+    amount,
+    paidAmount: 0,
+    description: document.getElementById('debtDescription').value.trim() || 'Nasiya',
+    dueDate: document.getElementById('debtDueDate').value || null,
+    createdAt: new Date().toISOString(),
+    payments: []
+  };
+  APP.debts.unshift(debt);
+  saveNasiyaData();
+  closeModal('addDebtModal');
+  renderDebtors();
+  updateNasiyaStats();
+  const debtor = APP.debtors.find(d => d.id === debtorId);
+  showToast(`📒 ${debtor ? debtor.name : 'Mijoz'} ga ${formatPrice(amount)} nasiya kiritildi`);
+}
+
+// ── To'lov ──
+function openPayDebtModal(debtId) {
+  const debt = APP.debts.find(d => d.id === debtId);
+  if (!debt) return;
+  const debtor = APP.debtors.find(d => d.id === debt.debtorId);
+  const balance = debt.amount - debt.paidAmount;
+  document.getElementById('payDebtId').value = debtId;
+  document.getElementById('payDebtTitle').textContent = `💵 To'lov — ${debtor ? debtor.name : ''}` ;
+  document.getElementById('payDebtInfo').innerHTML = `
+    <div style="margin-bottom:6px">📝 ${escHtml(debt.description)}</div>
+    <div>Jami nasiya: <b>${formatPrice(debt.amount)}</b></div>
+    <div>To'landi: <b style="color:var(--success)">${formatPrice(debt.paidAmount)}</b></div>
+    <div>Qoldi: <b style="color:var(--danger)">${formatPrice(balance)}</b></div>`;
+  document.getElementById('payAmount').value = balance;
+  document.getElementById('payNote').value = '';
+  openModal('payDebtModal');
+}
+
+function submitPayment() {
+  const debtId = document.getElementById('payDebtId').value;
+  const amount = parseFloat(document.getElementById('payAmount').value) || 0;
+  if (!debtId || amount <= 0) { showToast('⚠️ To\'lov miqdori kiritilishi shart'); return; }
+
+  const debt = APP.debts.find(d => d.id === debtId);
+  if (!debt) return;
+
+  const balance = debt.amount - debt.paidAmount;
+  const paid = Math.min(amount, balance); // ortiqcha qabul qilmaslik
+  debt.paidAmount += paid;
+  debt.payments = debt.payments || [];
+  debt.payments.push({ amount: paid, note: document.getElementById('payNote').value.trim(), date: new Date().toISOString() });
+
+  saveNasiyaData();
+  if (typeof SOUNDS !== 'undefined') SOUNDS.cash();
+  closeModal('payDebtModal');
+  renderDebtors();
+  updateNasiyaStats();
+
+  const debtor = APP.debtors.find(d => d.id === debt.debtorId);
+  const remaining = debt.amount - debt.paidAmount;
+  if (remaining <= 0) {
+    showToast(`✅ ${debtor ? debtor.name : 'Mijoz'} ning qarzi to'liq to'landi!`);
+  } else {
+    showToast(`✅ ${formatPrice(paid)} qabul qilindi. Qoldi: ${formatPrice(remaining)}`);
+  }
+}
+
+// ── showPage hook: nasiya sahifasi ochilganda render ──
+const _nasiyaOrigShowPage = window.showPage;
+window.showPage = function (page) {
+  _nasiyaOrigShowPage(page);
+  if (page === 'nasiya') {
+    renderDebtors();
+    updateNasiyaStats();
+  }
+};
+
+// ── loadLocalData hook: nasiya ma'lumotlarini ham yuklash ──
+const _origLoadLocalData = window.loadLocalData || loadLocalData;
+function loadLocalData() {
+  if (typeof _origLoadLocalData === 'function' && _origLoadLocalData !== loadLocalData) {
+    _origLoadLocalData();
+  }
+  loadNasiyaData();
+}

@@ -474,6 +474,39 @@
         </div>
       </div>
 
+      <!-- PAGE: NASIYA DAFTAR -->
+      <div id="page-nasiya" class="page">
+        <div class="page-header">
+          <h2>📒 Nasiya Daftar</h2>
+          <button class="btn-primary btn-sm" onclick="openModal('addDebtorModal')">+ Yangi mijoz</button>
+        </div>
+
+        <!-- Umumiy statistika -->
+        <div class="nasiya-summary">
+          <div class="stat-card nasiya-stat-danger">
+            <div class="stat-num" id="nasiyaTotalDebt">0</div>
+            <div class="stat-label">Jami nasiya (so'm)</div>
+          </div>
+          <div class="stat-card nasiya-stat-warn">
+            <div class="stat-num" id="nasiyaDebtorCount">0</div>
+            <div class="stat-label">Qarzdorlar</div>
+          </div>
+          <div class="stat-card nasiya-stat-ok">
+            <div class="stat-num" id="nasiyaTodayPaid">0</div>
+            <div class="stat-label">Bugun to'landi</div>
+          </div>
+        </div>
+
+        <!-- Qidiruv -->
+        <div class="search-bar" style="margin:0 0 12px;">
+          <input type="search" id="nasiyaSearch" placeholder="Mijoz ismi yoki telefon..."
+            oninput="filterDebtors(this.value)" />
+        </div>
+
+        <!-- Qarzdorlar ro'yxati -->
+        <div id="debtorList" class="debtor-list"></div>
+      </div>
+
     </div>
 
     <nav class="bottom-nav">
@@ -512,6 +545,16 @@
         </svg>
         <span>Hisobot</span>
       </button>
+      <button class="bnav-btn" id="bnav-nasiya" onclick="showPage('nasiya')" data-page="nasiya">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          <line x1="9" y1="9" x2="15" y2="9" />
+          <line x1="9" y1="13" x2="15" y2="13" />
+        </svg>
+        <span>Nasiya</span>
+        <span class="bnav-badge" id="nasiyaBadge" style="display:none;"></span>
+      </button>
       <button class="bnav-btn" id="bnav-settings" onclick="showPage('settings')" data-page="settings">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3" />
@@ -521,6 +564,95 @@
         <span>Sozlamalar</span>
       </button>
     </nav>
+  </div>
+
+  <!-- MODALS -->
+
+  <!-- Yangi qarzdor / nasiya qo'shish modali -->
+  <div class="modal-overlay" id="addDebtorModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3 id="debtorModalTitle">Yangi qarzdor</h3>
+        <button class="modal-close" onclick="closeModal('addDebtorModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="debtorId" value="" />
+        <div class="form-group">
+          <label>Mijoz ismi <span style="color:var(--danger)">*</span></label>
+          <input type="text" id="debtorName" placeholder="Ism Familiya" />
+        </div>
+        <div class="form-group">
+          <label>Telefon raqami</label>
+          <input type="tel" id="debtorPhone" placeholder="+998 90 000 00 00" />
+        </div>
+        <div class="form-group">
+          <label>Izoh</label>
+          <input type="text" id="debtorNote" placeholder="Ixtiyoriy" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('addDebtorModal')">Bekor qilish</button>
+        <button type="button" class="btn-primary" onclick="saveDebtor()">Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nasiya kiritish modali -->
+  <div class="modal-overlay" id="addDebtModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3 id="addDebtTitle">Nasiya qo'shish</h3>
+        <button class="modal-close" onclick="closeModal('addDebtModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="debtCustomerId" value="" />
+        <div class="form-group">
+          <label>Nasiya miqdori (so'm) <span style="color:var(--danger)">*</span></label>
+          <input type="number" id="debtAmount" placeholder="50000" min="0" />
+        </div>
+        <div class="form-group">
+          <label>Sabab / tavsif</label>
+          <input type="text" id="debtDescription" placeholder="Masalan: non, suv, go'sht..." />
+        </div>
+        <div class="form-group">
+          <label>To'lov muddati (ixtiyoriy)</label>
+          <input type="date" id="debtDueDate" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('addDebtModal')">Bekor qilish</button>
+        <button type="button" class="btn-primary" onclick="recordDebt()">Kiritish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- To'lov kiritish modali -->
+  <div class="modal-overlay" id="payDebtModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3 id="payDebtTitle">To'lov qabul qilish</h3>
+        <button class="modal-close" onclick="closeModal('payDebtModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="payDebtId" value="" />
+        <div id="payDebtInfo" style="background:var(--bg3);border-radius:12px;padding:12px;margin-bottom:14px;font-size:0.9rem;"></div>
+        <div class="form-group">
+          <label>To'lov miqdori (so'm) <span style="color:var(--danger)">*</span></label>
+          <input type="number" id="payAmount" placeholder="0" min="0" />
+        </div>
+        <div class="form-group">
+          <label>Izoh</label>
+          <input type="text" id="payNote" placeholder="Ixtiyoriy" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('payDebtModal')">Bekor qilish</button>
+        <button type="button" class="btn-success" onclick="submitPayment()">✅ Qabul qilish</button>
+      </div>
+    </div>
   </div>
 
   <!-- MODALS -->
