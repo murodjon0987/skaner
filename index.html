@@ -170,6 +170,9 @@
             </button>
           </div>
           <div class="product-found-card" id="productFoundCard" style="display:none;">
+            <div class="pf-img-wrap" id="pfImgWrap" style="display:none;">
+              <img id="pfImg" src="" alt="Mahsulot" />
+            </div>
             <div class="pf-info">
               <div class="pf-barcode" id="pfBarcode"></div>
               <div class="pf-details">
@@ -483,10 +486,40 @@
         <button class="modal-close" onclick="closeModal('addProductModal')">✕</button>
       </div>
       <div class="modal-body">
-        <!-- Internet dan topilgan mahsulot rasmi -->
-        <div id="productImagePreview" style="display:none;text-align:center;margin-bottom:14px;">
-          <img src="" alt="Mahsulot rasmi"
-            style="max-height:100px;max-width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.1);object-fit:contain;background:rgba(255,255,255,0.05);padding:6px;" />
+        <!-- Mahsulot rasmi bo'limi -->
+        <div class="product-image-uploader">
+          <label class="form-label">Mahsulot rasmi</label>
+          <div class="image-uploader-card">
+            <!-- Rasm prevyusi (agar rasm bo'lsa) -->
+            <div class="image-preview-area" id="imagePreviewArea" style="display:none;">
+              <img id="productImagePreviewTag" src="" alt="Mahsulot rasmi" />
+              <button type="button" class="btn-remove-img" onclick="removeProductImage()" title="Rasmni o'chirish">✕</button>
+            </div>
+            <!-- Bo'sh holat (agar rasm yo'q bo'lsa) -->
+            <div class="image-empty-state" id="imageEmptyState">
+              <div class="image-empty-icon">📷</div>
+              <div class="image-empty-title">Mahsulotning o'z rasmi</div>
+              <div class="image-empty-desc">Kameradan oling, fayldan tanlang yoki internetdan toping</div>
+            </div>
+            <!-- Yuklash boshqaruvlari -->
+            <div class="image-uploader-actions">
+              <label class="btn-img-action" title="Galereyadan rasm yuklash">
+                <input type="file" id="productImgFileInput" accept="image/*" style="display:none;" onchange="handleProductImageFile(event)" />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                Galereya
+              </label>
+              <label class="btn-img-action" title="Telefon kamerasidan rasmga olish">
+                <input type="file" id="productImgCameraInput" accept="image/*" capture="environment" style="display:none;" onchange="handleProductImageFile(event)" />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                Kamera
+              </label>
+              <button type="button" class="btn-img-action" onclick="fetchProductImageOnline()" title="Internet bazasidan haqiqiy rasmini qidirish">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                Internetdan
+              </button>
+            </div>
+            <input type="hidden" id="productImage" />
+          </div>
         </div>
         <div class="form-group">
           <label>Mahsulot nomi *</label>
@@ -593,7 +626,9 @@
   <!-- Scan Success Overlay -->
   <div class="scan-success-overlay" id="scanSuccessOverlay">
     <div class="scan-success-content">
-      <div class="scan-success-icon">✅</div>
+      <div class="scan-success-media" id="scanSuccessMedia">
+        <div class="scan-success-icon" id="scanSuccessIcon">✅</div>
+      </div>
       <div class="scan-success-name" id="scanSuccessName"></div>
       <div class="scan-success-price" id="scanSuccessPrice"></div>
     </div>

@@ -438,6 +438,8 @@ function showProductFoundCard(product, code) {
   const pfBarcode = document.getElementById('pfBarcode');
   const pfName = document.getElementById('pfName');
   const pfPrice = document.getElementById('pfPrice');
+  const pfImgWrap = document.getElementById('pfImgWrap');
+  const pfImg = document.getElementById('pfImg');
 
   pfBarcode.textContent = code;
   if (product) {
@@ -445,11 +447,18 @@ function showProductFoundCard(product, code) {
     pfPrice.textContent = formatPrice(product.price);
     card.style.background = 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(6,182,212,0.1))';
     card.style.borderColor = 'rgba(34,197,94,0.4)';
+    if (product.image && pfImg && pfImgWrap) {
+      pfImg.src = product.image;
+      pfImgWrap.style.display = 'block';
+    } else if (pfImgWrap) {
+      pfImgWrap.style.display = 'none';
+    }
   } else {
     pfName.textContent = 'Mahsulot topilmadi';
     pfPrice.textContent = 'Bazada yo\'q';
     card.style.background = 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05))';
     card.style.borderColor = 'rgba(239,68,68,0.4)';
+    if (pfImgWrap) pfImgWrap.style.display = 'none';
   }
   card.style.display = 'flex';
 }
@@ -539,10 +548,19 @@ function updateCartUI() {
     document.getElementById('discountRow').style.display = 'none';
   }
 
+  const catEmoji = {
+    ichimlik: '🥤', oziq: '🍞', shirinlik: '🍬',
+    sut: '🥛', uy: '🏠', gigiyena: '🧴', boshqa: '📦'
+  };
+
   // Render items
   cartList.innerHTML = APP.cart.map((item, idx) => `
     <li class="cart-item" id="cart-item-${item.id}">
       <div class="item-num">${idx + 1}</div>
+      <div class="item-thumb-box">
+        ${item.image ? `<img src="${escHtml(item.image)}" class="item-thumb-img" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
+        <span class="item-thumb-fallback" style="${item.image ? 'display:none' : 'display:flex'}">${catEmoji[item.category] || '📦'}</span>
+      </div>
       <div class="item-info">
         <div class="item-name">${escHtml(item.name)}</div>
         <div class="item-barcode">${escHtml(item.barcode)}</div>
@@ -759,8 +777,18 @@ window.speechSynthesis?.addEventListener('voiceschanged', () => {
 // ─────────────────────────────────────────────
 function showScanSuccess(product) {
   const overlay = document.getElementById('scanSuccessOverlay');
+  const media = document.getElementById('scanSuccessMedia');
   document.getElementById('scanSuccessName').textContent = product.name;
   document.getElementById('scanSuccessPrice').textContent = formatPrice(product.price);
+
+  if (media) {
+    if (product.image) {
+      media.innerHTML = `<img src="${escHtml(product.image)}" class="scan-success-img" alt="${escHtml(product.name)}" onerror="this.outerHTML='<div class=\\'scan-success-icon\\'>✅</div>'">`;
+    } else {
+      media.innerHTML = `<div class="scan-success-icon">✅</div>`;
+    }
+  }
+
   overlay.classList.add('show');
   setTimeout(() => overlay.classList.remove('show'), 2200);
 }
@@ -777,8 +805,11 @@ function showAddProductModal(product = null) {
   document.getElementById('productStock').value = product?.stock || '0';
   document.getElementById('productCategory').value = product?.category || 'boshqa';
   document.getElementById('editProductId').value = product?.id || '';
-  // Rasm va internet badge ni tozalash
-  updateModalProductImage(null);
+
+  // Rasm holati
+  setModalProductImage(product?.image || null);
+
+  // Internet badge ni tozalash
   document.getElementById('onlineBadge')?.remove();
   openModal('addProductModal');
 }
@@ -797,8 +828,8 @@ function openAddProductModalWithData(onlineData, barcode) {
   document.getElementById('productCategory').value = onlineData.category || 'boshqa';
   document.getElementById('editProductId').value = '';
 
-  // Rasm
-  updateModalProductImage(onlineData.image);
+  // Haqiqiy topilgan rasm
+  setModalProductImage(onlineData.image || null);
 
   // "Internet dan topildi" badge
   const existingBadge = document.getElementById('onlineBadge');
@@ -817,17 +848,146 @@ function openAddProductModalWithData(onlineData, barcode) {
   setTimeout(() => document.getElementById('productPrice')?.focus(), 300);
 }
 
-/** Modal ichidagi mahsulot rasmini yangilaydi */
-function updateModalProductImage(imageUrl) {
-  const container = document.getElementById('productImagePreview');
-  if (!container) return;
-  if (imageUrl) {
-    container.style.display = 'block';
-    container.querySelector('img').src = imageUrl;
-    container.querySelector('img').onerror = () => { container.style.display = 'none'; };
+/** Modal ichidagi mahsulot rasmini o'rnatish va prevyu qilish */
+function setModalProductImage(imageUrlOrBase64) {
+  const hiddenInput = document.getElementById('productImage');
+  const previewArea = document.getElementById('imagePreviewArea');
+  const previewImg = document.getElementById('productImagePreviewTag');
+  const emptyState = document.getElementById('imageEmptyState');
+
+  if (!hiddenInput || !previewArea || !previewImg || !emptyState) return;
+
+  if (imageUrlOrBase64) {
+    hiddenInput.value = imageUrlOrBase64;
+    previewImg.src = imageUrlOrBase64;
+    previewImg.onerror = () => {
+      previewArea.style.display = 'none';
+      emptyState.style.display = 'flex';
+      hiddenInput.value = '';
+    };
+    previewArea.style.display = 'block';
+    emptyState.style.display = 'none';
   } else {
-    container.style.display = 'none';
+    hiddenInput.value = '';
+    previewImg.src = '';
+    previewArea.style.display = 'none';
+    emptyState.style.display = 'flex';
   }
+}
+
+/** Rasmni olib tashlash */
+function removeProductImage() {
+  setModalProductImage(null);
+  showToast('Rasm olib tashlandi');
+}
+
+/** Foydalanuvchi fayl yoki kamera orqali rasm yuklaganda */
+async function handleProductImageFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!file.type.startsWith('image/')) {
+    showToast('Faqat rasm fayllarini yuklash mumkin');
+    return;
+  }
+
+  showToast('Rasm yuklanmoqda...');
+  try {
+    const compressedBase64 = await compressImage(file, 480, 480, 0.82);
+    setModalProductImage(compressedBase64);
+    showToast('✅ Mahsulot rasmi yuklandi');
+  } catch (err) {
+    console.error('Rasm yuklash xatosi:', err);
+    showToast('Rasmni yuklashda xatolik yuz berdi');
+  } finally {
+    event.target.value = '';
+  }
+}
+
+/** Rasmni avtomatik qisqartirish (Base64 JPEG) */
+function compressImage(file, maxWidth = 480, maxHeight = 480, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Internet bazasidan haqiqiy fotosurat qidirish */
+async function fetchProductImageOnline() {
+  const barcode = document.getElementById('productBarcode')?.value.trim();
+  const name = document.getElementById('productName')?.value.trim();
+
+  if (!barcode && !name) {
+    showToast('Avval shtrix-kod yoki mahsulot nomini kiriting');
+    return;
+  }
+
+  showToast('🌐 Internetdan haqiqiy fotosurat qidirilmoqda...');
+
+  // 1. Shtrix-kod orqali qidiruv
+  if (barcode) {
+    try {
+      const res = await lookupBarcodeOnline(barcode);
+      if (res && res.image) {
+        setModalProductImage(res.image);
+        showToast('✅ Internetdan haqiqiy rasm topildi!');
+        return;
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
+  // 2. Nom orqali OpenFoodFacts search
+  if (name) {
+    try {
+      const queryRes = await fetch(
+        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(name)}&search_simple=1&action=process&json=1&page_size=1`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (queryRes.ok) {
+        const qData = await queryRes.json();
+        const p = qData.products?.[0];
+        if (p && (p.image_front_url || p.image_url || p.image_small_url)) {
+          const img = p.image_front_url || p.image_url || p.image_small_url;
+          setModalProductImage(img);
+          showToast(`✅ "${name}" uchun haqiqiy rasm topildi!`);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
+  showToast('❌ Internetdan bu mahsulot rasmi topilmadi. Kamera yoki galereyadan yuklang.');
 }
 
 async function saveProduct() {
@@ -836,6 +996,7 @@ async function saveProduct() {
   const price = parseFloat(document.getElementById('productPrice').value);
   const stock = parseInt(document.getElementById('productStock').value) || 0;
   const category = document.getElementById('productCategory').value;
+  const image = document.getElementById('productImage')?.value || null;
 
   if (!name) { showToast('Mahsulot nomini kiriting'); return; }
   if (!barcode) { showToast('Shtrix-kodni kiriting'); return; }
@@ -854,6 +1015,7 @@ async function saveProduct() {
     price: Math.round(price),
     stock,
     category,
+    image,
     updatedAt: new Date().toISOString(),
   };
 
@@ -943,8 +1105,11 @@ function renderProductGrid(products) {
   };
 
   grid.innerHTML = products.map(p => `
-    <div class="product-card">
-      <div class="product-emoji">${catEmoji[p.category] || '📦'}</div>
+    <div class="product-card" onclick="editProductById('${p.id}')">
+      <div class="product-card-thumb">
+        ${p.image ? `<img src="${escHtml(p.image)}" class="product-card-img" alt="${escHtml(p.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
+        <span class="product-emoji" style="${p.image ? 'display:none' : 'display:flex'}">${catEmoji[p.category] || '📦'}</span>
+      </div>
       <div class="product-card-info">
         <div class="product-card-name">${escHtml(p.name)}</div>
         <div class="product-card-barcode">${escHtml(p.barcode)}</div>
@@ -953,8 +1118,8 @@ function renderProductGrid(products) {
           <span class="product-card-stock">Ombor: ${p.stock} ta</span>
         </div>
       </div>
-      <div class="product-card-actions">
-        <button class="btn-edit" onclick='editProduct(${JSON.stringify(p)})' title="Tahrirlash">✏️</button>
+      <div class="product-card-actions" onclick="event.stopPropagation()">
+        <button class="btn-edit" onclick="editProductById('${p.id}')" title="Tahrirlash">✏️</button>
         <button class="btn-del" onclick="deleteProduct('${p.id}')" title="O'chirish">🗑️</button>
       </div>
     </div>
@@ -963,6 +1128,11 @@ function renderProductGrid(products) {
 
 function editProduct(product) {
   showAddProductModal(product);
+}
+
+function editProductById(productId) {
+  const p = APP.products.find(item => item.id === productId);
+  if (p) showAddProductModal(p);
 }
 
 function updateProductStats() {
@@ -1128,24 +1298,24 @@ async function clearAllBills() {
 // ─────────────────────────────────────────────
 async function loadDemoProducts() {
   const demoProducts = [
-    { id: generateId(), name: 'Coca-Cola 500ml', barcode: '5449000000996', price: 8000, stock: 48, category: 'ichimlik', createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Pepsi 1L', barcode: '4900978400006', price: 12000, stock: 30, category: 'ichimlik', createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Nestle Su 1.5L', barcode: '7613034999993', price: 4000, stock: 100, category: 'ichimlik', createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Lay\'s Original 75g', barcode: '5900622022339', price: 15000, stock: 25, category: 'shirinlik', createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Snickers 50g', barcode: '5000159461572', price: 7000, stock: 60, category: 'shirinlik', createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Twix 50g', barcode: '5000159410618', price: 7500, stock: 45, category: 'shirinlik', createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Non (1 dona)', barcode: '4607086563499', price: 3000, stock: 20, category: 'oziq', createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Tuxum (10 dona)', barcode: '4607086563001', price: 28000, stock: 15, category: 'oziq', createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Süt 1L', barcode: '4607006750018', price: 12000, stock: 30, category: 'sut', createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Yogurt 200g', barcode: '4607006750025', price: 6000, stock: 40, category: 'sut', createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Shampun Head&Shoulders', barcode: '8001090136398', price: 45000, stock: 12, category: 'gigiyena', createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Ariel 3kg', barcode: '8001090544179', price: 85000, stock: 8, category: 'uy', createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Coca-Cola 500ml', barcode: '5449000000996', price: 8000, stock: 48, category: 'ichimlik', image: 'https://images.openfoodfacts.org/images/products/544/900/000/0996/front_en.1129.400.jpg', createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Pepsi Cola Can', barcode: '0012000000133', price: 9000, stock: 35, category: 'ichimlik', image: 'https://images.openfoodfacts.org/images/products/001/200/000/0133/front_fr.16.400.jpg', createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Snickers 50g', barcode: '5000159461122', price: 7000, stock: 60, category: 'shirinlik', image: 'https://images.openfoodfacts.org/images/products/500/015/946/1122/front_en.357.400.jpg', createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Lay\'s Original 75g', barcode: '0028400064088', price: 15000, stock: 25, category: 'shirinlik', image: 'https://images.openfoodfacts.org/images/products/002/840/006/4088/front_en.17.400.jpg', createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Nutella 400g', barcode: '3017620422003', price: 38000, stock: 20, category: 'shirinlik', image: 'https://images.openfoodfacts.org/images/products/301/762/042/2003/front_en.879.400.jpg', createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Red Bull 250ml', barcode: '9002490100070', price: 18000, stock: 30, category: 'ichimlik', image: 'https://images.openfoodfacts.org/images/products/900/249/010/0070/front_en.245.400.jpg', createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Oreo Prince 300g', barcode: '7622210449283', price: 16000, stock: 40, category: 'shirinlik', image: 'https://images.openfoodfacts.org/images/products/762/221/044/9283/front_en.605.400.jpg', createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Tog\' Suvi 1.5L', barcode: '3274080005003', price: 4000, stock: 100, category: 'ichimlik', image: 'https://images.openfoodfacts.org/images/products/327/408/000/5003/front_en.797.400.jpg', createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Non (1 dona)', barcode: '4607086563499', price: 3000, stock: 20, category: 'oziq', image: null, createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Tuxum (10 dona)', barcode: '4607086563001', price: 28000, stock: 15, category: 'oziq', image: null, createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Sut 1L', barcode: '4607006750018', price: 12000, stock: 30, category: 'sut', image: null, createdAt: new Date().toISOString() },
+    { id: generateId(), name: 'Ariel Kapsula', barcode: '8001090544179', price: 75000, stock: 10, category: 'uy', image: null, createdAt: new Date().toISOString() },
   ];
 
   for (const p of demoProducts) {
     await saveProductToDB(p);
   }
-  showToast(`${demoProducts.length} ta demo mahsulot qo'shildi ✅`);
+  showToast(`${demoProducts.length} ta demo mahsulot haqiqiy rasmlari bilan yuklandi ✅`);
 }
 
 // ─────────────────────────────────────────────
@@ -1358,6 +1528,7 @@ window.updateVoiceBtn = updateVoiceBtn;
 window.showAddProductModal = showAddProductModal;
 window.saveProduct = saveProduct;
 window.editProduct = editProduct;
+window.editProductById = editProductById;
 window.deleteProduct = deleteProduct;
 window.deleteAllProducts = deleteAllProducts;
 window.filterProducts = filterProducts;
@@ -1365,7 +1536,10 @@ window.loadDemoProducts = loadDemoProducts;
 window.scanForModal = scanForModal;
 window.lookupBarcodeOnline = lookupBarcodeOnline;
 window.openAddProductModalWithData = openAddProductModalWithData;
-window.updateModalProductImage = updateModalProductImage;
+window.setModalProductImage = setModalProductImage;
+window.removeProductImage = removeProductImage;
+window.handleProductImageFile = handleProductImageFile;
+window.fetchProductImageOnline = fetchProductImageOnline;
 window.showBillDetail = showBillDetail;
 window.printBill = printBill;
 window.clearAllBills = clearAllBills;
