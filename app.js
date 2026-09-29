@@ -32,6 +32,8 @@ const APP = {
   selectedPayment: 'cash',
   editingProductId: null,
   foundProduct: null,
+  torchOn: false,       // Kamera fonari (torch)
+  quickItems: [],       // Tezkor kodsiz tovarlar ro'yxati
   currentBillForPrint: null,
   _currentLinkTargetId: null,
 };
@@ -303,6 +305,7 @@ function detectCategoryFromName(name) {
 window.initApp = async function () {
   loadSettings();
   loadLocalData();
+  loadQuickItems();
   updateFirebaseStatus();
 
   if (window.useDemo) {
@@ -349,6 +352,7 @@ window.initApp = async function () {
 
   updateCartUI();
   updateVoiceBtn();
+  updateTorchUI();
 };
 
 // Agar Firebase modul allaqachon yuklangan bo'lsa va initApp chaqirilmagan bo'lsa
@@ -412,6 +416,14 @@ async function startCamera() {
 
 function stopCamera() {
   if (APP.cameraStream) {
+    if (APP.torchOn) {
+      try {
+        const track = APP.cameraStream.getVideoTracks()[0];
+        track?.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+      } catch (e) {}
+      APP.torchOn = false;
+      updateTorchUI();
+    }
     APP.cameraStream.getTracks().forEach(t => t.stop());
     APP.cameraStream = null;
   }
@@ -419,6 +431,49 @@ function stopCamera() {
   if (APP.scannerLoop) {
     cancelAnimationFrame(APP.scannerLoop);
     APP.scannerLoop = null;
+  }
+}
+
+// ── Kamera Fonari (Torch) ──
+async function toggleTorch() {
+  if (!APP.cameraStream) {
+    showToast('Kamera yoqilmagan. Avval kamerani yoqing.');
+    return;
+  }
+
+  const track = APP.cameraStream.getVideoTracks()[0];
+  if (!track) {
+    showToast('Kamera oqimi topilmadi');
+    return;
+  }
+
+  try {
+    APP.torchOn = !APP.torchOn;
+    await track.applyConstraints({
+      advanced: [{ torch: APP.torchOn }]
+    });
+
+    updateTorchUI();
+    if (typeof SOUNDS !== 'undefined') SOUNDS.pop();
+    showToast(APP.torchOn ? '🔦 Fonar yoqildi' : '🔦 Fonar o\'chirildi');
+    vibrateDevice([40]);
+  } catch (err) {
+    console.warn('Torch xatosi:', err);
+    APP.torchOn = false;
+    updateTorchUI();
+    showToast('Ushbu qurilmada kamera fonari mavjud emas');
+  }
+}
+
+function updateTorchUI() {
+  const btn = document.getElementById('torchBtn');
+  if (!btn) return;
+  if (APP.torchOn) {
+    btn.classList.add('active');
+    btn.setAttribute('title', 'Fonarni o\'chirish');
+  } else {
+    btn.classList.remove('active');
+    btn.setAttribute('title', 'Fonarni yoqish');
   }
 }
 
@@ -691,6 +746,148 @@ function addFoundProductToCart() {
   document.getElementById('productFoundCard').style.display = 'none';
   document.getElementById('manualBarcodeInput').value = '';
   APP.foundProduct = null;
+}
+
+// ─────────────────────────────────────────────
+//  TEZKOR KODSIZ TOVARLAR (QUICK ITEMS)
+// ─────────────────────────────────────────────
+const DEFAULT_QUICK_ITEMS = [
+  { id: 'q_paket_500', name: 'Paket (oddiy)', price: 500, emoji: '🛍️', category: 'uy' },
+  { id: 'q_paket_1000', name: 'Katta paket', price: 1000, emoji: '🛍️', category: 'uy' },
+  { id: 'q_non_4000', name: 'Tandir non', price: 4000, emoji: '🍞', category: 'non' },
+  { id: 'q_patir_7000', name: 'Patir non', price: 7000, emoji: '🥖', category: 'non' },
+  { id: 'q_tuxum_1500', name: 'Tuxum (1 dona)', price: 1500, emoji: '🥚', category: 'oziq' },
+  { id: 'q_suv_3000', name: 'Muzdek suv 0.5L', price: 3000, emoji: '💧', category: 'suv_05' },
+  { id: 'q_tarvuz_15000', name: 'Tarvuz (dona)', price: 15000, emoji: '🍉', category: 'oziq' },
+  { id: 'q_qovun_18000', name: 'Qovun (dona)', price: 18000, emoji: '🍈', category: 'oziq' }
+];
+
+function loadQuickItems() {
+  try {
+    const raw = localStorage.getItem('scanpos_quick_items');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        APP.quickItems = parsed;
+      } else {
+        APP.quickItems = [...DEFAULT_QUICK_ITEMS];
+      }
+    } else {
+      APP.quickItems = [...DEFAULT_QUICK_ITEMS];
+    }
+  } catch (e) {
+    APP.quickItems = [...DEFAULT_QUICK_ITEMS];
+  }
+  renderQuickItems();
+}
+
+function saveQuickItems() {
+  try {
+    localStorage.setItem('scanpos_quick_items', JSON.stringify(APP.quickItems));
+  } catch (e) {}
+}
+
+function renderQuickItems() {
+  const container = document.getElementById('quickItemsScroll');
+  if (!container) return;
+
+  if (!APP.quickItems || APP.quickItems.length === 0) {
+    APP.quickItems = [...DEFAULT_QUICK_ITEMS];
+  }
+
+  const itemsHtml = APP.quickItems.map(item => `
+    <div class="quick-item-card" onclick="addQuickItemToCart('${item.id}', event)">
+      <div class="quick-item-top">
+        <span class="quick-item-emoji">${item.emoji || '⚡'}</span>
+        <button class="quick-item-del" onclick="event.stopPropagation(); deleteQuickItem('${item.id}')" title="O'chirish">✕</button>
+      </div>
+      <div class="quick-item-name">${escHtml(item.name)}</div>
+      <div class="quick-item-price">${formatPriceShort(item.price)} so'm</div>
+    </div>
+  `).join('');
+
+  const addBtnHtml = `
+    <button type="button" class="quick-item-add-card" onclick="openQuickItemModal()" title="Yangi tezkor tovar qo'shish">
+      <span class="quick-add-icon">＋</span>
+      <span class="quick-add-text">Yangi tovar</span>
+    </button>
+  `;
+
+  container.innerHTML = itemsHtml + addBtnHtml;
+}
+
+function addQuickItemToCart(itemId, event) {
+  const item = APP.quickItems.find(q => q.id === itemId);
+  if (!item) return;
+
+  const productObj = {
+    id: item.id,
+    name: item.name,
+    price: Number(item.price),
+    barcode: item.barcode || ('QUICK_' + item.id),
+    category: item.category || 'boshqa',
+    stock: 999
+  };
+
+  addToCart(productObj);
+
+  if (event && event.currentTarget) {
+    const card = event.currentTarget;
+    card.classList.remove('quick-pop-active');
+    void card.offsetWidth;
+    card.classList.add('quick-pop-active');
+    setTimeout(() => card.classList.remove('quick-pop-active'), 250);
+  }
+}
+
+function openQuickItemModal(item = null) {
+  document.getElementById('quickItemName').value = item?.name || '';
+  document.getElementById('quickItemPrice').value = item?.price || '';
+  document.getElementById('quickItemEmoji').value = item?.emoji || '🛍️';
+  document.getElementById('quickItemCategory').value = item?.category || 'uy';
+  openModal('quickItemModal');
+}
+
+function saveQuickItem() {
+  const name = document.getElementById('quickItemName').value.trim();
+  const price = Number(document.getElementById('quickItemPrice').value);
+  const emoji = document.getElementById('quickItemEmoji').value;
+  const category = document.getElementById('quickItemCategory').value;
+
+  if (!name) {
+    showToast('Iltimos, tovar nomini kiriting');
+    return;
+  }
+  if (!price || price <= 0) {
+    showToast('Iltimos, tovar narxini to\'g\'ri kiriting');
+    return;
+  }
+
+  const newItem = {
+    id: 'q_' + Date.now(),
+    name,
+    price,
+    emoji,
+    category
+  };
+
+  APP.quickItems.push(newItem);
+  saveQuickItems();
+  renderQuickItems();
+  closeModal('quickItemModal');
+  if (typeof SOUNDS !== 'undefined') SOUNDS.pop();
+  showToast(`✅ "${name}" tezkor tovarlarga qo'shildi!`);
+}
+
+function deleteQuickItem(itemId) {
+  const item = APP.quickItems.find(q => q.id === itemId);
+  if (!item) return;
+  if (!confirm(`"${item.name}" tezkor tovarini o'chirishni xohlaysizmi?`)) return;
+
+  APP.quickItems = APP.quickItems.filter(q => q.id !== itemId);
+  saveQuickItems();
+  renderQuickItems();
+  showToast(`🗑️ "${item.name}" o'chirildi`);
 }
 
 // ─────────────────────────────────────────────
