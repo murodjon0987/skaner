@@ -1,0 +1,24 @@
+{
+  "name": "ScanPOS – Shtrix-kod Kassa Tizimi",
+  "short_name": "ScanPOS",
+  "description": "Smartfon kamerasi orqali shtrix-kod skanerlash va kassa hisob-kitob tizimi",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0d0f1a",
+  "theme_color": "#0d0f1a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "logo.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

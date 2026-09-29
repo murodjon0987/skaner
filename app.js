@@ -93,22 +93,22 @@ function extractProductBarcode(raw) {
   // Nazorat belgilarini (ASCII 0-31, 127) tozalash
   str = str.replace(/[\x00-\x1F\x7F]/g, '');
 
-  // 1. URL ichidagi kod (masalan: https://aslbelgisi.uz/c/0104780136192003...)
-  const urlMatch = str.match(/(?:01)(\d{14})/);
+  // 1. Asl Belgisi / GS1 Digital Link URL (masalan: https://aslbelgisi.uz/c/0104780136192003...)
+  const urlMatch = str.match(/^(?:https?:\/\/[^\s\/]+(?:\/c|\/01)?)[\/?#](?:01)?(\d{14})/i);
   if (urlMatch) {
     return normalizeGTIN(urlMatch[1]);
   }
 
-  // 2. Qavsli format: (01)04780136192003(21)...
-  const parenMatch = str.match(/\(01\)(\d{14})/);
+  // 2. Qavsli GS1 format: satr boshida (01) + 14 ta raqam
+  const parenMatch = str.match(/^(?:\(01\)|01)(\d{14})/);
   if (parenMatch) {
     return normalizeGTIN(parenMatch[1]);
   }
 
-  // 3. Standart GS1 DataMatrix: 01 bilan boshlanib kamida 16 ta belgi (01 + 14 xonali GTIN)
-  if (str.startsWith('01') && str.length >= 16 && /^\d{16}/.test(str)) {
-    const gtin = str.substring(2, 16);
-    return normalizeGTIN(gtin);
+  // 3. FNC1 yoki GS ajratuvchi bilan kelgan GS1 DataMatrix
+  const fnc1Match = str.match(/[\x1d\x1e](?:01)?(\d{14})/);
+  if (fnc1Match) {
+    return normalizeGTIN(fnc1Match[1]);
   }
 
   // 4. Aynan 14 xonali GTIN bo'lsa
@@ -155,146 +155,132 @@ let zxingReader = null;
  * @returns {Promise<{name, image, category, brand}|null>}
  */
 async function lookupBarcodeOnline(barcode) {
-  // 1. OpenFoodFacts (oziq-ovqat)
-  try {
-    const res = await fetch(
-      `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=product_name,brands,image_front_url,categories_tags`,
-      { signal: AbortSignal.timeout(6000) }
-    );
-    if (res.ok) {
-      const data = await res.json();
-      if (data.status === 1 && data.product) {
-        const p = data.product;
-        const name = p.product_name || p.brands || '';
-        if (name) {
-          return {
-            name: name.trim(),
-            brand: p.brands || '',
-            image: p.image_front_url || null,
-            category: detectCategory(p.categories_tags || [], 'oziq'),
-          };
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('OpenFoodFacts xato:', e.message);
-  }
+  const clean = String(barcode).trim();
+  if (!clean) return null;
 
-  // 2. OpenBeautyFacts (gigiyena)
-  try {
-    const res2 = await fetch(
-      `https://world.openbeautyfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=product_name,brands,image_front_url`,
-      { signal: AbortSignal.timeout(6000) }
-    );
-    if (res2.ok) {
-      const data2 = await res2.json();
-      if (data2.status === 1 && data2.product) {
-        const p = data2.product;
-        const name = p.product_name || p.brands || '';
-        if (name) {
-          return {
-            name: name.trim(),
-            brand: p.brands || '',
-            image: p.image_front_url || null,
-            category: 'gigiyena',
-          };
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('OpenBeautyFacts xato:', e.message);
-  }
-
-  // 3. UPC Item DB — global UPC/EAN baza (CIS, Osiyo mahsulotlari ham bor)
-  try {
-    const res3 = await fetch(
-      `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(barcode)}`,
-      {
-        signal: AbortSignal.timeout(6000),
-        headers: { 'Accept': 'application/json' }
-      }
-    );
-    if (res3.ok) {
-      const data3 = await res3.json();
-      const item = data3.items?.[0];
-      if (item && item.title) {
-        const catGuess = detectCategoryFromName(item.title + ' ' + (item.category || '') + ' ' + (item.brand || ''));
+  // 1. OpenFoodFacts (oziq-ovqat va ichimliklar)
+  const reqFood = fetch(
+    `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(clean)}.json?fields=product_name,product_name_ru,product_name_en,brands,image_front_url,categories_tags`,
+    { signal: AbortSignal.timeout(4500) }
+  ).then(async res => {
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status === 1 && data.product) {
+      const p = data.product;
+      const name = p.product_name_ru || p.product_name || p.product_name_en || p.brands || '';
+      if (name) {
         return {
-          name: item.title.trim(),
-          brand: item.brand || '',
-          image: item.images?.[0] || null,
-          category: catGuess,
+          name: name.trim(),
+          brand: p.brands || '',
+          image: p.image_front_url || null,
+          category: detectCategory(p.categories_tags || [], 'oziq'),
         };
       }
     }
-  } catch (e) {
-    console.warn('UPC Item DB xato:', e.message);
-  }
+    return null;
+  }).catch(() => null);
 
-  // 4. Open Food Facts search (nom bo'yicha emas, barcode bo'yicha — alternativ endpoint)
-  try {
-    const res4 = await fetch(
-      `https://world.openfoodfacts.org/product/${encodeURIComponent(barcode)}.json`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-    if (res4.ok) {
-      const data4 = await res4.json();
-      if (data4.status === 1 && data4.product) {
-        const p = data4.product;
-        const name = p.product_name_en || p.product_name_ru || p.product_name || p.brands || '';
-        if (name) {
-          return {
-            name: name.trim(),
-            brand: p.brands || '',
-            image: p.image_front_url || p.image_url || null,
-            category: detectCategory(p.categories_tags || [], detectCategoryFromName(name)),
-          };
-        }
+  // 2. OpenBeautyFacts (gigiyena va kosmetika)
+  const reqBeauty = fetch(
+    `https://world.openbeautyfacts.org/api/v2/product/${encodeURIComponent(clean)}.json?fields=product_name,brands,image_front_url`,
+    { signal: AbortSignal.timeout(4500) }
+  ).then(async res => {
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status === 1 && data.product) {
+      const p = data.product;
+      const name = p.product_name || p.brands || '';
+      if (name) {
+        return {
+          name: name.trim(),
+          brand: p.brands || '',
+          image: p.image_front_url || null,
+          category: 'gigiyena',
+        };
       }
     }
-  } catch (e) {
-    console.warn('OFF alternativ xato:', e.message);
-  }
+    return null;
+  }).catch(() => null);
 
-  return null;
+  // 3. UPC Item DB (global EAN/UPC katalogi)
+  const reqUpc = fetch(
+    `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(clean)}`,
+    {
+      signal: AbortSignal.timeout(4500),
+      headers: { 'Accept': 'application/json' }
+    }
+  ).then(async res => {
+    if (!res.ok) return null;
+    const data = await res.json();
+    const item = data.items?.[0];
+    if (item && item.title) {
+      return {
+        name: item.title.trim(),
+        brand: item.brand || '',
+        image: item.images?.[0] || null,
+        category: detectCategoryFromName(item.title + ' ' + (item.category || '')),
+      };
+    }
+    return null;
+  }).catch(() => null);
+
+  // So'rovlarni ketma-ket emas, parallel (bir vaqtda) yuborish
+  const results = await Promise.all([reqFood, reqBeauty, reqUpc]);
+  return results.find(r => r && r.name) || null;
 }
 
 /** categories_tags massividan kategoriya aniqlaymiz */
 function detectCategory(tags, fallback) {
   const str = tags.join(' ').toLowerCase();
-  if (/water|suv|вода/.test(str)) {
+  if (/(?:\b(?:water|suv)\b|вода|минералка)/.test(str)) {
     if (/0[.,]5|500/.test(str)) return 'suv_05';
     if (/1[.,]5|1[.,]0|1l/.test(str)) return 'suv_10';
     if (/5l|5000/.test(str)) return 'suv_50';
     return 'suv_05';
   }
-  if (/beverage|drink|juice|cola|soda|tea|coffee/.test(str)) return 'ichimlik';
-  if (/bread|bakery|flour|non|хлеб/.test(str)) return 'non';
-  if (/candy|chocolate|sweet|biscuit|snack|chip|crisp/.test(str)) return 'shirinlik';
-  if (/milk|dairy|cheese|yogurt|sut/.test(str)) return 'sut';
-  if (/rice|pasta|grain|cereal|konserva|oziq/.test(str)) return 'oziq';
-  if (/beauty|cosmetic|shampoo|soap|hygiene|gigiyena/.test(str)) return 'gigiyena';
-  if (/cleaning|detergent|household|uy/.test(str)) return 'uy';
+  if (/(?:\b(?:beverage|drink|juice|cola|soda|tea|coffee)\b|напиток|сок|чай)/.test(str)) return 'ichimlik';
+  if (/(?:\b(?:bread|bakery|flour|non)\b|хлеб|выпечка)/.test(str)) return 'non';
+  if (/(?:\b(?:candy|chocolate|sweet|biscuit|snack|chip|crisp)\b|сладости|шоколад|конфеты)/.test(str)) return 'shirinlik';
+  if (/(?:\b(?:milk|dairy|cheese|yogurt|sut)\b|молоко|сыр|йогурт)/.test(str)) return 'sut';
+  if (/(?:\b(?:rice|pasta|grain|cereal|konserva|oziq)\b|крупа|макароны|консервы)/.test(str)) return 'oziq';
+  if (/(?:\b(?:beauty|cosmetic|shampoo|soap|hygiene|gigiyena)\b|гигиена|косметика|мыло)/.test(str)) return 'gigiyena';
+  if (/(?:\b(?:cleaning|detergent|household|uy)\b|бытовая химия)/.test(str)) return 'uy';
   return fallback || 'boshqa';
 }
 
-/** Mahsulot nomi bo'yicha kategoriya taxmin qilish */
+/** Mahsulot nomi bo'yicha kategoriya taxmin qilish (\b so'z chegarasi bilan) */
 function detectCategoryFromName(name) {
   const n = (name || '').toLowerCase();
-  // Suvlar (hajmiga qarab)
-  if (/water|suv|вода|aqua|chortoq|montella|hydrolife|nestle|bonaqua|family/.test(n)) {
-    if (/0[.,]5|500\s*ml|05/.test(n)) return 'suv_05';
-    if (/1[.,]5|1[.,]0|1\s*l|1\s*л|1500\s*ml/.test(n)) return 'suv_10';
-    if (/5\s*l|5\s*л|5000\s*ml/.test(n)) return 'suv_50';
-    return 'suv_05'; // standart 0.5 suv
+
+  // Suvlar (aniq suv iboralari — nestle va family olib tashlangan!)
+  if (/(?:\b(?:water|suv|aqua|chortoq|montella|hydrolife|bonaqua)\b|вода|минералка|минеральная)/i.test(n)) {
+    if (/(?:0[.,]5|500\s*ml|0\.5l)/i.test(n)) return 'suv_05';
+    if (/(?:1[.,]5|1[.,]0|1\s*l|1\s*л|1500\s*ml)/i.test(n)) return 'suv_10';
+    if (/(?:5\s*l|5\s*л|5000\s*ml|5\s*литр)/i.test(n)) return 'suv_50';
+    return 'suv_05';
   }
-  if (/cola|pepsi|sprite|fanta|soda|tea|choy|кофе|coffee|energy|redbull|lipton|flash|сок|sharbat|juice|drink/.test(n)) return 'ichimlik';
-  if (/non|хлеб|lepeshka|patir|lavash|buloqa|bread|toast|батон/.test(n)) return 'non';
-  if (/chocolate|шоколад|candy|konfet|конфет|snicker|twix|kitkat|oreo|cookie|biscuit|chip|crisp|sweet|shirinlik|tort|pirog|pechene/.test(n)) return 'shirinlik';
-  if (/milk|sut|сут|молоко|kefir|yogurt|qatiq|cheese|пишлоқ|qaymoq|tvorog|smetana/.test(n)) return 'sut';
-  if (/rice|guruch|pasta|macaroni|flour|un|cereal|oat|shakar|tuz|yog'|moy|maslo|konserva/.test(n)) return 'oziq';
-  if (/shampoo|soap|sovun|toothpaste|тиш|дезодорант|deodorant|parfum|atir|cream|крем|lotion|gel|balzam/.test(n)) return 'gigiyena';
-  if (/washing|кир|detergent|clean|bleach|domestos|fairy|tide|ariel|poroshok/.test(n)) return 'uy';
+
+  // Ichimliklar: so'z chegarasi bilan (steak, protean xato tushmasin)
+  if (/(?:\b(?:cola|pepsi|sprite|fanta|soda|tea|choy|coffee|energy|redbull|lipton|flash|juice|drink)\b|сок|шарбат|кофе)/i.test(n)) return 'ichimlik';
+
+  // Non mahsulotlari: \bnon\b (canon, economic xato tushmasin)
+  if (/(?:\b(?:non|patir|lavash|bread|toast)\b|хлеб|лепешка|батон|булочка)/i.test(n)) return 'non';
+
+  // Shirinliklar
+  if (/(?:\b(?:chocolate|candy|biscuit|snack|cookie|wafer|cake|pie)\b|шоколад|конфет|печенье|торт|пирог|вафли|shirinlik)/i.test(n)) return 'shirinlik';
+
+  // Sut mahsulotlari
+  if (/(?:\b(?:milk|kefir|yogurt|cheese|dairy)\b|сут|молоко|кефир|йогурт|сыр|творог|сметана|qatiq|qaymoq)/i.test(n)) return 'sut';
+
+  // Oziq-ovqat: \bun\b (sun, sound, funny xato tushmasin)
+  if (/(?:\b(?:rice|pasta|macaroni|flour|un|sugar|salt|oil)\b|гуруч|макарон|ун|шакар|туз|масло|консерва)/i.test(n)) return 'oziq';
+
+  // Gigiyena: \bgel\b (angel, bagel xato tushmasin)
+  if (/(?:\b(?:shampoo|soap|toothpaste|deodorant|perfume|cream|lotion|gel|balm)\b|шампунь|мыло|крем|гель|бальзам|sovun)/i.test(n)) return 'gigiyena';
+
+  // Uy-ro'zg'or
+  if (/(?:\b(?:detergent|bleach|cleaner|sponge|fairy|tide|ariel)\b|порошок|белизна|пакет)/i.test(n)) return 'uy';
+
   return 'boshqa';
 }
 
@@ -330,8 +316,8 @@ window.initApp = async function () {
     try {
       APP.barcodeDetector = new BarcodeDetector({
         formats: [
-          'ean_13', 'ean_8', 'upc_a', 'upc_e',
-          'code_128', 'code_39', 'qr_code', 'itf', 'codabar'
+          'data_matrix', 'qr_code', 'ean_13', 'ean_8', 'upc_a', 'upc_e',
+          'code_128', 'code_39', 'itf', 'codabar'
         ]
       });
       console.log('✅ BarcodeDetector API tayyor');
@@ -391,8 +377,7 @@ async function startCamera() {
       video: {
         facingMode: { ideal: 'environment' },
         width: { ideal: 1280 },
-        height: { ideal: 720 },
-        focusMode: { ideal: 'continuous' }
+        height: { ideal: 720 }
       }
     };
 
@@ -405,7 +390,7 @@ async function startCamera() {
     video.addEventListener('loadedmetadata', () => {
       video.play();
       startScanning();
-    });
+    }, { once: true });
   } catch (err) {
     console.error('Kamera xatosi:', err);
     cameraOff.style.display = 'flex';
@@ -426,6 +411,11 @@ function stopCamera() {
     }
     APP.cameraStream.getTracks().forEach(t => t.stop());
     APP.cameraStream = null;
+  }
+  if (zxingReader) {
+    try {
+      zxingReader.reset();
+    } catch (e) {}
   }
   APP.scanning = false;
   if (APP.scannerLoop) {
@@ -519,53 +509,20 @@ async function scanWithNativeAPI() {
 
 // ── ZXing fallback ──
 function scanWithZXing() {
+  if (!APP.scanning) return;
   const video = document.getElementById('cameraFeed');
 
-  const loop = () => {
-    if (!APP.scanning) return;
-
-    if (video.readyState === video.HAVE_ENOUGH_DATA && zxingReader) {
-      const canvas = document.getElementById('scanCanvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // Faqat ramka sohasini skanerlash (aniqroq)
-      const frameX = Math.floor(canvas.width * 0.1);
-      const frameY = Math.floor(canvas.height * 0.3);
-      const frameW = Math.floor(canvas.width * 0.8);
-      const frameH = Math.floor(canvas.height * 0.4);
-      const imageData = ctx.getImageData(frameX, frameY, frameW, frameH);
-
-      try {
-        const luminanceSource = new window.ZXingBrowser.HTMLCanvasElementLuminanceSource(canvas);
-        const hints = new Map();
-        const formats = [
-          window.ZXing.BarcodeFormat.EAN_13,
-          window.ZXing.BarcodeFormat.EAN_8,
-          window.ZXing.BarcodeFormat.UPC_A,
-          window.ZXing.BarcodeFormat.CODE_128,
-        ];
-        hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-        hints.set(window.ZXing.DecodeHintType.TRY_HARDER, true);
-      } catch (e) { /* ignore */ }
-    }
-
-    APP.scannerLoop = requestAnimationFrame(loop);
-  };
-
-  // ZXing bilan to'g'ri ishlash
-  if (zxingReader) {
-    const video = document.getElementById('cameraFeed');
+  if (zxingReader && video) {
     zxingReader.decodeFromVideoElement(video, (result, err) => {
-      if (result) {
+      if (result && APP.scanning) {
         handleBarcodeDetected(result.getText());
       }
     }).catch(e => console.warn('ZXing xato:', e));
   } else {
-    // ZXing hali yuklanmagan — kutib tur
-    setTimeout(() => scanWithZXing(), 1000);
+    // ZXing hali yuklanmagan bo'lsa kutib turish
+    setTimeout(() => {
+      if (APP.scanning) scanWithZXing();
+    }, 500);
   }
 }
 
@@ -574,6 +531,11 @@ function scanWithZXing() {
 // ─────────────────────────────────────────────
 function handleBarcodeDetected(rawCode) {
   if (!rawCode) return;
+
+  // Modal ochiq paytda yoki onlayn qidiruv ketayotganda skanerlashni bloklash
+  if (!APP._scanForModal && document.querySelector('.modal-overlay.active')) return;
+  if (APP.isLookingUpOnline) return;
+
   rawCode = String(rawCode).trim();
   const code = extractProductBarcode(rawCode);
 
@@ -614,6 +576,7 @@ function handleBarcodeDetected(rawCode) {
     updateScanHint(`✅ ${product.name}`, 'success');
   } else {
     // ❌ Mahalliy bazada topilmadi — internetdan qidiramiz
+    APP.isLookingUpOnline = true;
     SOUNDS.error();
     updateScanHint(`🌐 ${code} internetdan qidirilmoqda...`, 'success');
     showToast(`🌐 Kod: ${code} — qidirilmoqda...`);
@@ -632,12 +595,14 @@ function handleBarcodeDetected(rawCode) {
         showProductFoundCard(null, code);
         updateScanHint(`❌ Kod: ${code} — yangi mahsulot`, 'error');
         showToast(`❌ "${code}" topilmadi. Yangi mahsulot qo'shing.`);
-        openAddProductModalWithData({ name: '', image: null, category: 'suv_05', brand: '' }, code, rawCode);
+        openAddProductModalWithData({ name: '', image: null, category: 'boshqa', brand: '' }, code, rawCode);
       }
     }).catch(() => {
       showProductFoundCard(null, code);
       updateScanHint(`❌ Internet yo'q — yangi mahsulot`, 'error');
-      openAddProductModalWithData({ name: '', image: null, category: 'suv_05', brand: '' }, code, rawCode);
+      openAddProductModalWithData({ name: '', image: null, category: 'boshqa', brand: '' }, code, rawCode);
+    }).finally(() => {
+      APP.isLookingUpOnline = false;
     });
   }
 
@@ -933,6 +898,11 @@ function clearCart() {
 }
 
 function updateCartUI() {
+  // Savatni localStorage ga saqlash (reload bo'lganda yo'qolmasligi uchun)
+  try {
+    localStorage.setItem('scanpos_cart', JSON.stringify(APP.cart || []));
+  } catch (e) {}
+
   const cartList = document.getElementById('cartList');
   const emptyCart = document.getElementById('emptyCart');
   const cartFooter = document.getElementById('cartFooter');
@@ -1035,8 +1005,12 @@ function selectPayment(type) {
 
 function calcChange() {
   const subtotal = APP.cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const discountInput = document.getElementById('discountPercent');
+  const rawPct = parseFloat(discountInput ? discountInput.value : 0) || 0;
+  const pct = Math.min(100, Math.max(0, rawPct));
+  const discount = subtotal * (pct / 100);
   const tax = subtotal * (parseFloat(APP.settings.taxRate || 0) / 100);
-  const grand = subtotal + tax;
+  const grand = Math.max(subtotal - discount + tax, 0);
   const given = parseFloat(document.getElementById('cashGiven').value) || 0;
   const change = given - grand;
 
@@ -1058,59 +1032,101 @@ function calcChange() {
 }
 
 function applyDiscount() {
-  const pct = parseFloat(document.getElementById('discountPercent').value) || 0;
+  const discountInput = document.getElementById('discountPercent');
+  let rawPct = parseFloat(discountInput.value) || 0;
+  // 0–100% oralig'ida cheklash
+  if (rawPct < 0) rawPct = 0;
+  if (rawPct > 100) rawPct = 100;
+  if (discountInput.value !== '' && !isNaN(rawPct)) {
+    discountInput.value = rawPct;
+  }
+  const pct = rawPct;
   const subtotal = APP.cart.reduce((s, i) => s + i.price * i.qty, 0);
   const discount = subtotal * (pct / 100);
   const tax = subtotal * (parseFloat(APP.settings.taxRate || 0) / 100);
-  const grand = subtotal - discount + tax;
-  document.getElementById('checkoutAmount').textContent = formatPrice(Math.max(grand, 0));
+  const grand = Math.max(subtotal - discount + tax, 0);
+  document.getElementById('checkoutAmount').textContent = formatPrice(grand);
+  // Chegirma o'zgarganda qaytimni ham qayta hisoblash
+  calcChange();
 }
 
 async function completeSale() {
-  const subtotal = APP.cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const discountPct = parseFloat(document.getElementById('discountPercent').value) || 0;
-  const discount = subtotal * (discountPct / 100);
-  const tax = subtotal * (parseFloat(APP.settings.taxRate || 0) / 100);
-  const grand = Math.max(subtotal - discount + tax, 0);
+  // Ikki marta bosishdan himoya
+  if (APP.isCheckingOut) return;
+  APP.isCheckingOut = true;
 
-  // Naqd to'lovda yetarlilik tekshiruvi
-  if (APP.selectedPayment === 'cash') {
-    const given = parseFloat(document.getElementById('cashGiven').value) || 0;
-    if (given > 0 && given < grand) {
+  const confirmBtn = document.querySelector('#checkoutModal .btn-success') || document.querySelector('#checkoutModal button[onclick*="completeSale"]');
+  if (confirmBtn) confirmBtn.disabled = true;
+
+  try {
+    const subtotal = APP.cart.reduce((s, i) => s + i.price * i.qty, 0);
+    const rawDiscountPct = parseFloat(document.getElementById('discountPercent').value) || 0;
+    const discountPct = Math.min(100, Math.max(0, rawDiscountPct));
+    const discount = subtotal * (discountPct / 100);
+    const tax = subtotal * (parseFloat(APP.settings.taxRate || 0) / 100);
+    const grand = Math.max(subtotal - discount + tax, 0);
+
+    // Naqd to'lovda yetarlilik tekshiruvi
+    const cashGivenVal = parseFloat(document.getElementById('cashGiven').value) || 0;
+    if (APP.selectedPayment === 'cash' && cashGivenVal > 0 && cashGivenVal < grand) {
       showToast('Yetarli pul kiritilmagan');
       return;
     }
+
+    const cashGiven = APP.selectedPayment === 'cash' ? cashGivenVal : 0;
+    const change = APP.selectedPayment === 'cash' ? Math.max(0, cashGiven - grand) : 0;
+
+    const bill = {
+      id: generateId(),
+      timestamp: new Date().toISOString(),
+      items: APP.cart.map(i => ({ ...i })),
+      subtotal,
+      discount,
+      discountPercent: discountPct,
+      tax,
+      total: grand,
+      paymentMethod: APP.selectedPayment,
+      shopName: APP.settings.shopName || 'ScanPOS',
+      cashGiven,
+      change,
+    };
+
+    // ── Mahsulotlar qoldig'ini (stock) kamaytirish ──
+    for (const item of APP.cart) {
+      const prod = APP.products.find(p => p.id === item.id);
+      if (prod) {
+        const currentStock = parseInt(prod.stock, 10) || 0;
+        prod.stock = Math.max(0, currentStock - item.qty);
+        prod.updatedAt = new Date().toISOString();
+        await saveProductToDB(prod);
+      }
+    }
+    updateProductStats();
+    renderProducts();
+
+    // Firebase yoki localStorage ga saqlash
+    await saveBill(bill);
+
+    // Kassa pul qutisi jiringlashi
+    SOUNDS.cash();
+
+    closeModal('checkoutModal');
+    APP.cart = [];
+    updateCartUI();
+    showToast(`✅ To'lov qabul qilindi! ${formatPrice(grand)}`);
+
+    // Chek sahifasiga o'tish
+    setTimeout(() => {
+      showPage('bills');
+      vibrateDevice([100, 50, 200]);
+    }, 800);
+  } catch (err) {
+    console.error('Sotuvni yakunlashda xato:', err);
+    showToast('To\'lovni amalga oshirishda xatolik yuz berdi');
+  } finally {
+    APP.isCheckingOut = false;
+    if (confirmBtn) confirmBtn.disabled = false;
   }
-
-  const bill = {
-    id: generateId(),
-    timestamp: new Date().toISOString(),
-    items: APP.cart.map(i => ({ ...i })),
-    subtotal,
-    discount,
-    tax,
-    total: grand,
-    paymentMethod: APP.selectedPayment,
-    shopName: APP.settings.shopName || 'ScanPOS',
-    cashGiven: APP.selectedPayment === 'cash' ? (parseFloat(document.getElementById('cashGiven').value) || 0) : 0,
-  };
-
-  // Firebase yoki localStorage ga saqlash
-  await saveBill(bill);
-
-  // Kassa pul qutisi jiringlashi
-  SOUNDS.cash();
-
-  closeModal('checkoutModal');
-  APP.cart = [];
-  updateCartUI();
-  showToast(`✅ To'lov qabul qilindi! ${formatPrice(grand)}`);
-
-  // Chek sahifasiga o'tish
-  setTimeout(() => {
-    showPage('bills');
-    vibrateDevice([100, 50, 200]);
-  }, 800);
 }
 
 // ─────────────────────────────────────────────
@@ -1368,17 +1384,18 @@ function announceVoice(name, price) {
   if (voices && voices.length > 0) {
     const langPrefix = lang.split('-')[0].toLowerCase();
     let match = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix));
-    if (!match && langPrefix === 'uz') {
+    // uz-UZ ovozi tizimda bo'lmasa ru-RU ovoziga o'tish
+    if (!match && (langPrefix === 'uz' || lang === 'uz-UZ')) {
       match = voices.find(v => v.lang.toLowerCase().startsWith('ru')) || voices[0];
     }
     if (match) {
       utt.voice = match;
       utt.lang = match.lang;
     } else {
-      utt.lang = lang;
+      utt.lang = 'ru-RU';
     }
   } else {
-    utt.lang = lang;
+    utt.lang = (lang === 'uz-UZ' || lang === 'uz') ? 'ru-RU' : lang;
   }
 
   try {
@@ -1389,9 +1406,28 @@ function announceVoice(name, price) {
 }
 
 function formatPriceVoice(amount) {
-  if (amount >= 1000000) return `${(amount / 1000000).toFixed(1)} million so'm`;
-  if (amount >= 1000) return `${Math.round(amount / 1000)} ming so'm`;
-  return `${Math.round(amount)} so'm`;
+  const val = Math.round(Number(amount) || 0);
+  if (val <= 0) return "0 so'm";
+
+  if (val >= 1000000) {
+    const millions = Math.floor(val / 1000000);
+    const thousands = Math.round((val % 1000000) / 1000);
+    if (thousands > 0) {
+      return `${millions} million ${thousands} ming so'm`;
+    }
+    return `${millions} million so'm`;
+  }
+
+  if (val >= 1000) {
+    const thousands = Math.floor(val / 1000);
+    const remainder = val % 1000;
+    if (remainder > 0) {
+      return `${thousands} ming ${remainder} so'm`;
+    }
+    return `${thousands} ming so'm`;
+  }
+
+  return `${val} so'm`;
 }
 
 function toggleVoice() {
@@ -1514,21 +1550,22 @@ function openAddProductModalWithData(onlineData, barcode, rawCode = '') {
   document.getElementById('productStock').value = '0';
   document.getElementById('editProductId').value = '';
 
-  // Toifani aniqlash: nomdan yoki berilgan kategoriyadan
-  let cat = 'suv_05';
-  if (onlineData.name) {
-    cat = detectCategoryFromName(onlineData.name);
-  } else if (onlineData.category && onlineData.category !== 'boshqa') {
+  // Toifani aniqlash: onlayn topilgan toifa bo'lsa uni olamiz (qayta yozilmasin!)
+  let cat = 'boshqa';
+  if (onlineData.category && onlineData.category !== 'boshqa') {
     cat = onlineData.category;
+  } else if (onlineData.name) {
+    cat = detectCategoryFromName(onlineData.name);
   }
   document.getElementById('productCategory').value = cat;
 
-  // Narxni toifa bo'yicha avtomatik to'ldirish
-  const defaultPrice = APP.categoryPrices[cat] || 0;
+  // Narx: noma'lum mahsulotga narx doim bo'sh bo'lsin.
+  // Faqat internetdan topilgan va standart narxi mavjud toifalar uchun to'ldiriladi.
   const priceInput = document.getElementById('productPrice');
   const priceHintBadge = document.getElementById('priceHintBadge');
 
-  if (defaultPrice > 0) {
+  if (isFound && APP.categoryPrices[cat] && cat !== 'boshqa') {
+    const defaultPrice = APP.categoryPrices[cat];
     priceInput.value = defaultPrice;
     if (priceHintBadge) {
       priceHintBadge.textContent = `⚡ Standart: ${formatPriceShort(defaultPrice)} so'm`;
@@ -1572,9 +1609,9 @@ function openAddProductModalWithData(onlineData, barcode, rawCode = '') {
 
   // Topilmagan bo'lsa nom maydoniga, narx to'ldirilgan bo'lsa miqdorga, aks holda narxga
   setTimeout(() => {
-    const focusEl = (isFound && defaultPrice > 0)
-      ? document.getElementById('productStock')
-      : (!isFound ? document.getElementById('productName') : document.getElementById('productPrice'));
+    const focusEl = !isFound
+      ? document.getElementById('productName')
+      : (!priceInput.value ? priceInput : document.getElementById('productStock'));
     focusEl?.focus();
   }, 350);
 }
@@ -1727,11 +1764,16 @@ function onCategorySelectChange(category) {
 
   if (APP.categoryPrices[category]) {
     const defPrice = APP.categoryPrices[category];
-    priceInput.value = defPrice;
+    // Foydalanuvchi kiritgan narxni ustidan yozmaslik — faqat narx bo'sh bo'lsa to'ldirish
+    if (!priceInput.value || priceInput.value.trim() === '') {
+      priceInput.value = defPrice;
+    }
     if (priceHintBadge) {
       priceHintBadge.textContent = `⚡ Standart: ${formatPriceShort(defPrice)} so'm`;
       priceHintBadge.style.display = 'inline-block';
     }
+  } else if (priceHintBadge) {
+    priceHintBadge.style.display = 'none';
   }
 
   updateSyncCategoryUI(category);
@@ -1939,9 +1981,11 @@ async function saveProduct() {
 
   await saveProductToDB(product);
 
-  // Ushbu toifa standart narxini eslab qolamiz
-  APP.categoryPrices[category] = roundedPrice;
-  saveCategoryPrices();
+  // Faqat syncCategory tanlangan bo'lsa yoki toifada hali standart narx bo'lmasa eslab qolamiz
+  if (syncCategory || !APP.categoryPrices[category]) {
+    APP.categoryPrices[category] = roundedPrice;
+    saveCategoryPrices();
+  }
 
   // Agar toifadagi barcha mahsulotlar narxini ham yangilash tanlangan bo'lsa
   let syncedCount = 0;
@@ -2010,6 +2054,30 @@ async function deleteProduct(productId) {
 
 async function deleteAllProducts() {
   if (!confirm('BARCHA mahsulotlarni o\'chirishni tasdiqlaysizmi?')) return;
+
+  // Firebase rejimida Firestore'dan ham batch orqali o'chirish
+  if (!window.useDemo && window.firebaseDB && window.firebaseFns) {
+    try {
+      const { collection, getDocs, writeBatch } = window.firebaseFns;
+      const snapshot = await getDocs(collection(window.firebaseDB, 'products'));
+      if (!snapshot.empty) {
+        let batch = writeBatch(window.firebaseDB);
+        let count = 0;
+        for (const docSnap of snapshot.docs) {
+          batch.delete(docSnap.ref);
+          count++;
+          if (count % 400 === 0) {
+            await batch.commit();
+            batch = writeBatch(window.firebaseDB);
+          }
+        }
+        await batch.commit();
+      }
+    } catch (e) {
+      console.error('Firestore mahsulotlarni o\'chirish xatosi:', e);
+    }
+  }
+
   APP.products = [];
   saveLocalData();
   renderProducts();
@@ -2225,6 +2293,30 @@ function printBill() {
 async function clearAllBills() {
   if (APP.bills.length === 0) return;
   if (!confirm('Barcha cheklar tarixini o\'chirishni tasdiqlaysizmi?')) return;
+
+  // Firebase rejimida Firestore'dan ham batch orqali o'chirish
+  if (!window.useDemo && window.firebaseDB && window.firebaseFns) {
+    try {
+      const { collection, getDocs, writeBatch } = window.firebaseFns;
+      const snapshot = await getDocs(collection(window.firebaseDB, 'bills'));
+      if (!snapshot.empty) {
+        let batch = writeBatch(window.firebaseDB);
+        let count = 0;
+        for (const docSnap of snapshot.docs) {
+          batch.delete(docSnap.ref);
+          count++;
+          if (count % 400 === 0) {
+            await batch.commit();
+            batch = writeBatch(window.firebaseDB);
+          }
+        }
+        await batch.commit();
+      }
+    } catch (e) {
+      console.error('Firestore cheklarni o\'chirish xatosi:', e);
+    }
+  }
+
   APP.bills = [];
   saveLocalData();
   renderBills();
@@ -2314,14 +2406,41 @@ function loadLocalData() {
   try {
     const p = localStorage.getItem('scanpos_products');
     const b = localStorage.getItem('scanpos_bills');
+    const c = localStorage.getItem('scanpos_cart');
     if (p) APP.products = JSON.parse(p);
     if (b) APP.bills = JSON.parse(b);
-  } catch { }
+    if (c) {
+      APP.cart = JSON.parse(c);
+      updateCartUI();
+    }
+  } catch (e) {
+    console.warn('loadLocalData xato:', e);
+  }
 }
 
 function saveLocalData() {
-  localStorage.setItem('scanpos_products', JSON.stringify(APP.products));
-  localStorage.setItem('scanpos_bills', JSON.stringify(APP.bills));
+  try {
+    localStorage.setItem('scanpos_products', JSON.stringify(APP.products));
+    localStorage.setItem('scanpos_bills', JSON.stringify(APP.bills));
+    localStorage.setItem('scanpos_cart', JSON.stringify(APP.cart || []));
+  } catch (e) {
+    console.warn('LocalStorage quota to\'ldi yoki xato berdi, fallback qo\'llanmoqda:', e);
+    try {
+      // Base64 rasmlar kvotani to'ldirgan bo'lsa, rasmlarsiz yengil nusxasini saqlash
+      const slimProducts = (APP.products || []).map(p => {
+        if (p.image && p.image.startsWith('data:')) {
+          const { image, ...rest } = p;
+          return rest;
+        }
+        return p;
+      });
+      localStorage.setItem('scanpos_products', JSON.stringify(slimProducts));
+      localStorage.setItem('scanpos_bills', JSON.stringify((APP.bills || []).slice(-100)));
+      localStorage.setItem('scanpos_cart', JSON.stringify(APP.cart || []));
+    } catch (err) {
+      console.error('LocalStorage ga saqlab bo\'lmadi:', err);
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -2527,14 +2646,20 @@ function renderAnalytics() {
   document.getElementById('anTotalItems').textContent = totalItems;
   document.getElementById('anAvgBill').textContent = formatPriceShort(avgBill) + ' so\'m';
 
+  // ── TOP-5 products (Chart.js ga bog'liq emas) ──
+  buildTopProducts(filtered);
+
+  // Agar Chart.js yuklanmagan bo'lsa xatolik bermay to'xtash
+  if (typeof Chart === 'undefined') {
+    console.warn('Chart.js mavjud emas yoki yuklanmagan');
+    return;
+  }
+
   // ── Revenue chart (kunlik) ──
   buildRevenueChart(filtered, days);
 
   // ── Payment pie chart ──
   buildPaymentChart(filtered);
-
-  // ── TOP-5 products ──
-  buildTopProducts(filtered);
 
   // ── Hourly chart (bugun) ──
   buildHourlyChart();
@@ -2542,6 +2667,7 @@ function renderAnalytics() {
 
 /** Kunlik savdo grafigi (line chart) */
 function buildRevenueChart(bills, days) {
+  if (typeof Chart === 'undefined') return;
   const labels = [];
   const data = [];
 
@@ -2603,6 +2729,7 @@ function buildRevenueChart(bills, days) {
 
 /** To'lov usullari donut chart */
 function buildPaymentChart(bills) {
+  if (typeof Chart === 'undefined') return;
   const cash  = bills.filter(b => b.paymentMethod === 'cash').reduce((s, b) => s + b.total, 0);
   const card  = bills.filter(b => b.paymentMethod === 'card').reduce((s, b) => s + b.total, 0);
   const trans = bills.filter(b => b.paymentMethod === 'transfer').reduce((s, b) => s + b.total, 0);
@@ -2696,6 +2823,7 @@ function buildTopProducts(bills) {
 
 /** Bugungi soatlik savdo (bar chart) */
 function buildHourlyChart() {
+  if (typeof Chart === 'undefined') return;
   const today = new Date().toDateString();
   const todayBills = APP.bills.filter(b => new Date(b.timestamp).toDateString() === today);
 
@@ -2705,9 +2833,9 @@ function buildHourlyChart() {
     hours[h] += b.total;
   });
 
-  // Faqat 6:00–23:00 ni ko'rsat
-  const labels = Array.from({ length: 18 }, (_, i) => `${i + 6}:00`);
-  const data = hours.slice(6, 24).map(v => Math.round(v / 1000));
+  // To'liq 24 soat (00:00–23:00)
+  const labels = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
+  const data = hours.map(v => Math.round(v / 1000));
 
   const ctx = document.getElementById('hourlyChart');
   if (!ctx) return;
