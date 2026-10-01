@@ -34,6 +34,23 @@
     window.useDemo = true;
     window.firebaseDB = null;
     window.firebaseFns = {};
+    window.firebaseReady = false;
+
+    // Helper: App ni har qanday sharoitda xavfsiz ishga tushirish
+    window.triggerAppInit = function () {
+      if (typeof window.initApp === 'function') {
+        window.initApp();
+      } else {
+        const onReady = () => {
+          if (typeof window.initApp === 'function') window.initApp();
+        };
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', onReady, { once: true });
+        } else {
+          setTimeout(onReady, 50);
+        }
+      }
+    };
 
     const firebaseConfig = {
       apiKey: "AIzaSyDEMO_REPLACE_WITH_YOUR_KEY",
@@ -49,42 +66,51 @@
       if (!firebaseConfig.apiKey || firebaseConfig.apiKey.includes("REPLACE")) {
         console.log("ℹ️ Demo rejim (Firebase kaliti kiritilmagan)");
         window.useDemo = true;
-        if (typeof window.initApp === 'function') window.initApp();
+        window.firebaseReady = true;
+        window.triggerAppInit();
         return;
       }
 
       try {
-        const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
-        const firestore = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-        const { getAuth, signInAnonymously } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        const initPromise = (async () => {
+          const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
+          const firestore = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+          const { getAuth, signInAnonymously } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
 
-        const app = initializeApp(firebaseConfig);
-        const db = firestore.getFirestore(app);
-        const auth = getAuth(app);
-        await signInAnonymously(auth);
+          const app = initializeApp(firebaseConfig);
+          const db = firestore.getFirestore(app);
+          const auth = getAuth(app);
+          await signInAnonymously(auth);
 
-        window.firebaseDB = db;
-        window.firebaseFns = {
-          collection: firestore.collection,
-          doc: firestore.doc,
-          getDoc: firestore.getDoc,
-          getDocs: firestore.getDocs,
-          setDoc: firestore.setDoc,
-          addDoc: firestore.addDoc,
-          updateDoc: firestore.updateDoc,
-          deleteDoc: firestore.deleteDoc,
-          onSnapshot: firestore.onSnapshot,
-          serverTimestamp: firestore.serverTimestamp,
-          writeBatch: firestore.writeBatch
-        };
-        window.useDemo = false;
-        console.log("✅ Firebase ulandi!");
+          window.firebaseDB = db;
+          window.firebaseFns = {
+            collection: firestore.collection,
+            doc: firestore.doc,
+            getDoc: firestore.getDoc,
+            getDocs: firestore.getDocs,
+            setDoc: firestore.setDoc,
+            addDoc: firestore.addDoc,
+            updateDoc: firestore.updateDoc,
+            deleteDoc: firestore.deleteDoc,
+            onSnapshot: firestore.onSnapshot,
+            serverTimestamp: firestore.serverTimestamp,
+            writeBatch: firestore.writeBatch
+          };
+          window.useDemo = false;
+          console.log("✅ Firebase ulandi!");
+        })();
+
+        // 3 soniyalik timeout (agar CDN sekin yoki bloklangan bo'lsa)
+        await Promise.race([
+          initPromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase timeout')), 3000))
+        ]);
       } catch (e) {
         console.warn("⚠️ Firebase CDN yoki tarmoq xatosi, demo rejimga o'tildi:", e);
         window.useDemo = true;
       } finally {
-        if (typeof window.initApp === 'function') window.initApp();
-        else window.addEventListener('appReady', () => window.initApp());
+        window.firebaseReady = true;
+        window.triggerAppInit();
       }
     }
 

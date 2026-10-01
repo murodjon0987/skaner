@@ -1,15 +1,16 @@
 // ScanPOS Service Worker (Offline Cache)
-const CACHE_NAME = 'scanpos-v2';
+const CACHE_NAME = 'scanpos-v3';
 const LOCAL_ASSETS = [
   './',
   './index.html',
   './app.js',
   './style.css',
   './logo.png',
+  './logo.svg',
   './manifest.json'
 ];
 const CDN_ASSETS = [
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js',
   'https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js'
 ];
 
@@ -43,22 +44,44 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
 
-  // Tashqi so'rovlarga (Firebase, API) xalaqit bermaslik
+  // Tashqi so'rovlarga (Firebase, OpenFoodFacts va b.) xalaqit bermaslik
   if (url.origin !== self.location.origin &&
       !CDN_ASSETS.some(u => e.request.url.startsWith(u.split('/').slice(0, 3).join('/')))) {
     return;
   }
 
+  // HTML va JS fayllar uchun Network-First (yangilanishlar darhol yetib borishi uchun)
+  const isCodeAsset = e.request.mode === 'navigate' ||
+                      url.pathname.endsWith('.html') ||
+                      url.pathname.endsWith('.js') ||
+                      url.pathname === '/';
+
+  if (isCodeAsset) {
+    e.respondWith(
+      fetch(e.request)
+        .then((res) => {
+          if (res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          }
+          return res;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Boshqa resurslar (CSS, rasmlar, fontlar, CDN kutubxonalari) uchun Cache-First
   e.respondWith(
     caches.match(e.request).then((cached) => {
-      const networked = fetch(e.request).then((res) => {
+      if (cached) return cached;
+      return fetch(e.request).then((res) => {
         if (res.status === 200) {
           const clone = res.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
         }
         return res;
-      }).catch(() => cached);
-      return cached || networked;
+      });
     })
   );
 });

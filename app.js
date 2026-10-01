@@ -344,19 +344,27 @@ window.initApp = async function () {
   updateFirebaseStatus();
 
   if (window.useDemo) {
-    document.getElementById('demoTag').classList.remove('hidden');
+    const demoTag = document.getElementById('demoTag');
+    if (demoTag) demoTag.classList.remove('hidden');
   }
 
   // Splash animatsiya
   setTimeout(() => {
     const splash = document.getElementById('splash');
-    splash.classList.add('out');
-    setTimeout(() => {
-      splash.style.display = 'none';
-      document.getElementById('app').classList.remove('hidden');
+    if (splash) {
+      splash.classList.add('out');
+      setTimeout(() => {
+        splash.style.display = 'none';
+        const appEl = document.getElementById('app');
+        if (appEl) appEl.classList.remove('hidden');
+        startCamera();
+      }, 400);
+    } else {
+      const appEl = document.getElementById('app');
+      if (appEl) appEl.classList.remove('hidden');
       startCamera();
-    }, 500);
-  }, 1800);
+    }
+  }, 1200);
 
   // ZXing CDN dan yuklash (BarcodeDetector yo'q bo'lganda)
   if (!('BarcodeDetector' in window)) {
@@ -416,6 +424,10 @@ async function startCamera() {
   const cameraOff = document.getElementById('cameraOff');
 
   try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Kamera brauzerda qo\'llab-quvvatlanmaydi yoki HTTPS talab qilinadi.');
+    }
+
     // Orqa kamerani tanlash
     const constraints = {
       video: {
@@ -427,19 +439,23 @@ async function startCamera() {
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     APP.cameraStream = stream;
-    video.srcObject = stream;
-    video.style.display = 'block';
-    cameraOff.style.display = 'none';
+    if (video) {
+      video.srcObject = stream;
+      video.style.display = 'block';
+    }
+    if (cameraOff) cameraOff.style.display = 'none';
 
-    video.addEventListener('loadedmetadata', () => {
-      video.play();
-      startScanning();
-    }, { once: true });
+    if (video) {
+      video.addEventListener('loadedmetadata', () => {
+        video.play().catch(e => console.warn('Video play:', e));
+        startScanning();
+      }, { once: true });
+    }
   } catch (err) {
     console.error('Kamera xatosi:', err);
-    cameraOff.style.display = 'flex';
-    video.style.display = 'none';
-    showToast('Kameraga ruxsat berilmagan. Brauzer sozlamalarini tekshiring.');
+    if (cameraOff) cameraOff.style.display = 'flex';
+    if (video) video.style.display = 'none';
+    showToast('Kameraga ruxsat berilmadi yoki kamera topilmadi.');
   }
 }
 
@@ -3296,3 +3312,26 @@ window.showPage = function (page) {
     updateNasiyaStats();
   }
 };
+
+// ── Avtomatik ishga tushirish kafolati ──
+function autoBootApp() {
+  if (!window._appInited && typeof window.initApp === 'function') {
+    // Agar Firebase allaqachon tekshirilgan bo'lsa yoki demo bo'lsa
+    if (window.firebaseReady !== false || window.useDemo) {
+      window.initApp();
+    }
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', autoBootApp);
+} else {
+  autoBootApp();
+}
+
+// Zaxira ishga tushirish: agar 1 soniya ichida hech narsa bo'lmasa qotib qolmaslik
+setTimeout(() => {
+  if (!window._appInited && typeof window.initApp === 'function') {
+    window.initApp();
+  }
+}, 1000);
