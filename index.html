@@ -198,7 +198,7 @@
     };
   </script>
 
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=5.1.0" />
 </head>
 
 <body>
@@ -359,7 +359,7 @@
           <div class="cart-header">
             <div style="display:flex;align-items:center;gap:8px;">
               <h2>Savat <span class="cart-count" id="cartCount">0</span></h2>
-              <button type="button" class="btn-hold-badge" id="heldCartsBtn" onclick="openHeldCartsModal()" style="display:none;" title="Kutishdagi savatlar">
+              <button type="button" class="btn-hold-badge" id="heldCartsBtn" onclick="openHeldCartsModal()" style="display:none;background:#f59e0b;color:#000;border:none;border-radius:20px;padding:4px 10px;font-size:0.75rem;font-weight:700;cursor:pointer;" title="Kutishdagi savatlar">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
                   <rect x="6" y="4" width="4" height="16"></rect>
                   <rect x="14" y="4" width="4" height="16"></rect>
@@ -368,9 +368,17 @@
               </button>
             </div>
             <div style="display:flex;gap:6px;">
-              <button class="hold-cart-btn" id="holdCartBtn" onclick="holdCurrentCart()" style="display:none;" title="Savatni to'xtatib turish">To'xtatish</button>
-              <button class="clear-cart-btn" id="clearCartBtn" onclick="clearCart()"
-                style="display:none;">Tozalash</button>
+              <button type="button" class="hold-cart-btn" id="holdCartBtn" onclick="holdCurrentCart()" style="display:none;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.35);color:#f59e0b;padding:5px 12px;border-radius:8px;font-size:0.75rem;font-weight:600;cursor:pointer;" title="Savatni to'xtatib turish">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="svg-icon" style="vertical-align:-1px;">
+                  <rect x="6" y="4" width="4" height="16"></rect>
+                  <rect x="14" y="4" width="4" height="16"></rect>
+                </svg>
+                To'xtatish
+              </button>
+              <button type="button" class="clear-cart-btn" id="clearCartBtn" onclick="clearCart()"
+                style="display:none;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#ef4444;padding:5px 12px;border-radius:8px;font-size:0.75rem;font-weight:600;cursor:pointer;">
+                Tozalash
+              </button>
             </div>
           </div>
           <div class="empty-cart" id="emptyCart">

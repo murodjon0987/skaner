@@ -1,5 +1,5 @@
 // ScanPOS Service Worker (Offline Cache)
-const CACHE_NAME = 'scanpos-v4';
+const CACHE_NAME = 'scanpos-v5';
 const LOCAL_ASSETS = [
   './',
   './index.html',
@@ -81,10 +81,12 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // 1. HTML va JS fayllar uchun Network-First (yangilanishlar darhol yetib borishi uchun)
+  // 1. HTML, JS va CSS fayllar uchun Network-First (yangilanishlar darhol yetib borishi uchun)
   const isCodeAsset = e.request.mode === 'navigate' ||
                       url.pathname.endsWith('.html') ||
                       url.pathname.endsWith('.js') ||
+                      url.pathname.endsWith('.css') ||
+                      url.pathname.endsWith('.json') ||
                       url.pathname === '/';
 
   if (isCodeAsset) {
@@ -106,33 +108,6 @@ self.addEventListener('fetch', (e) => {
             headers: { 'Content-Type': 'text/plain; charset=utf-8' }
           });
         })
-    );
-    return;
-  }
-
-  // 2. CSS fayllar uchun Stale-While-Revalidate (keshdan tez beriladi, fonda yangilanadi)
-  const isCssAsset = url.pathname.endsWith('.css');
-  if (isCssAsset) {
-    e.respondWith(
-      caches.match(e.request).then((cached) => {
-        const fetchPromise = fetch(e.request).then((networkResponse) => {
-          if (networkResponse.status === 200) {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
-          }
-          return networkResponse;
-        }).catch(() => null);
-
-        if (cached) return cached;
-        return fetchPromise.then(res => {
-          if (res) return res;
-          return new Response('/* Offline fallback */', {
-            status: 503,
-            statusText: 'Service Unavailable',
-            headers: { 'Content-Type': 'text/css; charset=utf-8' }
-          });
-        });
-      })
     );
     return;
   }

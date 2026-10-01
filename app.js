@@ -1517,31 +1517,35 @@ function updateCartUI() {
 
  // Render items
  if (cartList) {
- cartList.innerHTML = APP.cart.map((item, idx) => `
- <li class="cart-item" id="cart-item-${item.id}">
- <div class="item-num">${idx + 1}</div>
- <div class="item-thumb-box">
- ${item.image ? `<img src="${escHtml(item.image)}" class="item-thumb-img" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
- <span class="item-thumb-fallback" style="${item.image ? 'display:none' : 'display:flex'}">${catIcon(item.category)}</span>
- </div>
- <div class="item-info">
- <div class="item-name">${escHtml(item.name)}</div>
- <div class="item-barcode">${escHtml(item.barcode || '')}</div>
- </div>
- <div class="item-qty-control">
- <button class="qty-btn" onclick="changeQty('${item.id}', -1)">−</button>
- <input type="number" step="any" min="0.001" value="${item.qty}" class="cart-qty-input" onchange="setCartQty('${item.id}', this.value)" />
- <button class="qty-btn" onclick="changeQty('${item.id}', 1)">+</button>
- <span class="qty-unit" style="font-size:0.75rem;color:var(--text3);margin-left:2px;">${escHtml(item.unit || 'ta')}</span>
- </div>
- <div class="item-price">
- <div class="item-price-each">${formatPrice(item.price)}/${escHtml(item.unit || 'ta')}</div>
- <div class="item-price-total">${formatPrice(Math.round(item.price * item.qty))}</div>
- </div>
- <button class="item-remove" onclick="removeFromCart('${item.id}')">${icon('x', 14)}</button>
- </li>
- `).join('');
- }
+    cartList.innerHTML = APP.cart.map((item, idx) => `
+      <li class="cart-item" id="cart-item-${item.id}">
+        <div class="cart-item-header">
+          <div class="item-num">${idx + 1}</div>
+          <div class="item-thumb-box">
+            ${item.image ? `<img src="${escHtml(item.image)}" class="item-thumb-img" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
+            <span class="item-thumb-fallback" style="${item.image ? 'display:none' : 'display:flex'}">${catIcon(item.category)}</span>
+          </div>
+          <div class="item-info">
+            <div class="item-name" title="${escHtml(item.name)}">${escHtml(item.name)}</div>
+            <div class="item-meta">
+              <span class="item-price-each">${formatPrice(item.price)}/${escHtml(item.unit || 'ta')}</span>
+              ${item.barcode ? `<span class="item-barcode-tag">${escHtml(item.barcode)}</span>` : ''}
+            </div>
+          </div>
+          <button type="button" class="item-remove" onclick="removeFromCart('${item.id}')" title="Savatdan o'chirish" aria-label="O'chirish">${icon('x', 14)}</button>
+        </div>
+        <div class="cart-item-bottom">
+          <div class="item-qty-control">
+            <button type="button" class="qty-btn qty-minus" onclick="changeQty('${item.id}', -1)" aria-label="Kamaytirish">−</button>
+            <input type="number" inputmode="decimal" step="any" min="0.001" value="${item.qty}" class="cart-qty-input" onchange="setCartQty('${item.id}', this.value)" onfocus="this.select()" aria-label="Miqdor" style="width:46px;min-width:38px;max-width:52px;height:28px;text-align:center;background:var(--bg2,#131626);border:1px solid var(--border,rgba(255,255,255,0.12));border-radius:7px;color:var(--text,#f1f5f9);font-weight:700;font-size:0.85rem;padding:0 4px;box-sizing:border-box;margin:0;" />
+            <button type="button" class="qty-btn qty-plus" onclick="changeQty('${item.id}', 1)" aria-label="Ko'paytirish">+</button>
+            <span class="qty-unit">${escHtml(item.unit || 'ta')}</span>
+          </div>
+          <div class="item-price-total">${formatPrice(Math.round(item.price * item.qty))}</div>
+        </div>
+      </li>
+    `).join('');
+  }
 }
 
 // ─────────────────────────────────────────────
