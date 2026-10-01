@@ -47,6 +47,7 @@ const ScanDB = {
  dbName: 'scanpos_idb',
  storeName: 'keyval',
  _db: null,
+ _opQueue: Promise.resolve(),
  async getDb() {
  if (this._db) return this._db;
  if (typeof indexedDB === 'undefined') return null;
@@ -74,54 +75,124 @@ const ScanDB = {
  return v ? JSON.parse(v) : defaultVal;
  }
  return new Promise((resolve) => {
+ try {
  const tx = db.transaction(this.storeName, 'readonly');
  const req = tx.objectStore(this.storeName).get(key);
  req.onsuccess = () => resolve(req.result !== undefined ? req.result : defaultVal);
  req.onerror = () => resolve(defaultVal);
+ } catch (e) {
+ resolve(defaultVal);
+ }
  });
  } catch (e) {
  return defaultVal;
  }
  },
  async set(key, value) {
+ const run = async () => {
  try {
  const db = await this.getDb();
  if (!db) {
+ try {
  localStorage.setItem('idb_' + key, JSON.stringify(value));
  return true;
+ } catch (e) {
+ return false;
+ }
  }
  return new Promise((resolve) => {
+ try {
  const tx = db.transaction(this.storeName, 'readwrite');
+ tx.oncomplete = () => resolve(true);
+ tx.onabort = () => resolve(false);
+ tx.onerror = () => resolve(false);
  const req = tx.objectStore(this.storeName).put(value, key);
- req.onsuccess = () => resolve(true);
  req.onerror = () => resolve(false);
+ } catch (err) {
+ resolve(false);
+ }
  });
  } catch (e) {
  return false;
  }
+ };
+ this._opQueue = this._opQueue.catch(() => {}).then(run);
+ return this._opQueue;
  },
  async delete(key) {
+ const run = async () => {
  try {
  const db = await this.getDb();
  if (!db) {
+ try {
  localStorage.removeItem('idb_' + key);
  return true;
+ } catch (e) {
+ return false;
+ }
  }
  return new Promise((resolve) => {
+ try {
  const tx = db.transaction(this.storeName, 'readwrite');
+ tx.oncomplete = () => resolve(true);
+ tx.onabort = () => resolve(false);
+ tx.onerror = () => resolve(false);
  const req = tx.objectStore(this.storeName).delete(key);
- req.onsuccess = () => resolve(true);
  req.onerror = () => resolve(false);
+ } catch (err) {
+ resolve(false);
+ }
  });
  } catch (e) {
  return false;
  }
+ };
+ this._opQueue = this._opQueue.catch(() => {}).then(run);
+ return this._opQueue;
  }
 };
 
 // ─────────────────────────────────────────────
+// UTILS & HELPERS (Timeout, Product, Phone)
+// ─────────────────────────────────────────────
+function withTimeout(promise, ms = 10000) {
+ return Promise.race([
+ promise,
+ new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), ms))
+ ]);
+}
+
+function normalizeProduct(p) {
+ if (!p || typeof p !== 'object') return p;
+ if (p.trackStock === undefined) {
+ const s = Number(p.stock);
+ p.trackStock = (!isNaN(s) && s > 0);
+ } else {
+ p.trackStock = Boolean(p.trackStock);
+ }
+ if (p.stock === 999 && !p.isQuick) {
+ p.isQuick = true;
+ p.trackStock = false;
+ }
+ return p;
+}
+
+function isTracked(p) {
+ if (!p) return false;
+ return Boolean(!p.isQuick && p.trackStock === true);
+}
+
+function sanitizePhone(phone) {
+ if (!phone) return '';
+ return String(phone).replace(/[^0-9+\s]/g, '');
+}
+
+// ─────────────────────────────────────────────
 // OFFLINE OUTBOX QUEUE (scanpos_outbox)
 // ─────────────────────────────────────────────
+let outboxBusy = false;
+let outboxEnqueueChain = Promise.resolve();
+
 async function getOutboxQueue() {
  try {
  const raw = await ScanDB.get('scanpos_outbox', []);
@@ -132,10 +203,15 @@ async function getOutboxQueue() {
 }
 
 async function enqueueOutbox(item) {
+ outboxEnqueueChain = outboxEnqueueChain.catch(() => {}).then(async () => {
  const q = await getOutboxQueue();
- q.push({ id: generateId(), timestamp: Date.now(), ...item });
+ const entry = { id: generateId(), timestamp: Date.now(), ...item };
+ q.push(entry);
  await ScanDB.set('scanpos_outbox', q);
  updateOutboxUI();
+ return entry;
+ });
+ return outboxEnqueueChain;
 }
 
 async function updateOutboxUI() {
@@ -143,44 +219,99 @@ async function updateOutboxUI() {
  if (!badge) return;
  const q = await getOutboxQueue();
  if (q.length > 0) {
+ badge.classList.remove('hidden');
  badge.style.display = 'inline-flex';
  badge.textContent = `Navbatda: ${q.length}`;
  } else {
+ badge.classList.add('hidden');
  badge.style.display = 'none';
  }
 }
 
 async function processOutbox() {
- if (window.useDemo || !window.firebaseDB || !window.firebaseFns || !navigator.onLine) {
+ if (outboxBusy) return;
+ if (!window.firebaseDB || !window.firebaseFns || !navigator.onLine) {
  return;
  }
- const q = await getOutboxQueue();
- if (q.length === 0) return;
+ if (window.useDemo && !window.isFirebaseConfigured) {
+ return;
+ }
 
- const remaining = [];
- const { doc, setDoc, deleteDoc } = window.firebaseFns;
-
- for (const task of q) {
+ outboxBusy = true;
  try {
- if (task.action === 'saveProduct') {
- await setDoc(doc(window.firebaseDB, 'products', task.data.id), task.data);
+ const currentQueue = await getOutboxQueue();
+ if (currentQueue.length === 0) return;
+
+ const successfulIds = new Set();
+ const { doc, setDoc, deleteDoc, writeBatch: wb, increment } = window.firebaseFns;
+
+ for (const task of currentQueue) {
+ try {
+ if (task.action === 'saveProduct' || task.action === 'product') {
+ await withTimeout(setDoc(doc(window.firebaseDB, 'products', task.data.id), task.data));
+ successfulIds.add(task.id);
  } else if (task.action === 'deleteProduct') {
- await deleteDoc(doc(window.firebaseDB, 'products', task.id));
- } else if (task.action === 'saveBill') {
- await setDoc(doc(window.firebaseDB, 'bills', task.data.id), task.data);
- } else if (task.action === 'saveDebtor') {
- await setDoc(doc(window.firebaseDB, 'debtors', task.data.id), task.data);
- } else if (task.action === 'saveDebt') {
- await setDoc(doc(window.firebaseDB, 'debts', task.data.id), task.data);
+ await withTimeout(deleteDoc(doc(window.firebaseDB, 'products', task.id)));
+ successfulIds.add(task.id);
+ } else if (task.action === 'saveBill' || task.action === 'bill') {
+ await withTimeout(setDoc(doc(window.firebaseDB, 'bills', task.data.id), task.data));
+ successfulIds.add(task.id);
+ } else if (task.action === 'saveDebtor' || task.action === 'debtor') {
+ await withTimeout(setDoc(doc(window.firebaseDB, 'debtors', task.data.id), task.data));
+ successfulIds.add(task.id);
+ } else if (task.action === 'deleteDebtor') {
+ await withTimeout(deleteDoc(doc(window.firebaseDB, 'debtors', task.id)));
+ successfulIds.add(task.id);
+ } else if (task.action === 'saveDebt' || task.action === 'debt') {
+ await withTimeout(setDoc(doc(window.firebaseDB, 'debts', task.data.id), task.data));
+ successfulIds.add(task.id);
+ } else if (task.action === 'deleteDebt') {
+ await withTimeout(deleteDoc(doc(window.firebaseDB, 'debts', task.id)));
+ successfulIds.add(task.id);
+ } else if (task.action === 'saleBatch' || task.action === 'refundBatch') {
+ const batch = wb(window.firebaseDB);
+ if (task.products && Array.isArray(task.products)) {
+ for (const pUpdate of task.products) {
+ const pRef = doc(window.firebaseDB, 'products', pUpdate.id);
+ if (typeof increment === 'function' && pUpdate.qtyChange !== undefined) {
+ batch.update(pRef, {
+ stock: increment(pUpdate.qtyChange),
+ updatedAt: new Date().toISOString()
+ });
+ } else if (pUpdate.stock !== undefined) {
+ batch.update(pRef, {
+ stock: pUpdate.stock,
+ updatedAt: new Date().toISOString()
+ });
+ }
+ }
+ }
+ if (task.bill) {
+ batch.set(doc(window.firebaseDB, 'bills', task.bill.id), task.bill);
+    }
+    if (task.debt) {
+     batch.set(doc(window.firebaseDB, 'debts', task.debt.id), task.debt);
+ }
+ await withTimeout(batch.commit());
+ successfulIds.add(task.id);
  }
  } catch (e) {
  console.warn('Outbox yuborishda xato:', task, e);
- remaining.push(task);
  }
  }
 
+ if (successfulIds.size > 0) {
+ outboxEnqueueChain = outboxEnqueueChain.catch(() => {}).then(async () => {
+ const freshQueue = await getOutboxQueue();
+ const remaining = freshQueue.filter(item => !successfulIds.has(item.id));
  await ScanDB.set('scanpos_outbox', remaining);
  updateOutboxUI();
+ });
+ await outboxEnqueueChain;
+ }
+ } finally {
+ outboxBusy = false;
+ }
 }
 
 function updateNetworkStatus() {
@@ -593,10 +724,14 @@ window.initApp = async function () {
  // Firebase real-time listeners
  if (!window.useDemo && window.firebaseDB) {
  listenFirestoreProducts();
- listenFirestoreBills();
+  listenFirestoreBills();
+  listenFirestoreDebtors();
+  listenFirestoreDebts();
  } else {
  renderProducts();
- renderBills();
+  renderBills();
+  renderDebtors();
+  updateNasiyaStats();
  }
 
  updateCartUI();
@@ -629,7 +764,7 @@ function loadZXing() {
  };
  s.onerror = () => {
  console.warn('ZXing yuklanmadi');
- showToast('️ Skaner moduli yuklanmadi, qo\'lda kiriting', 'error');
+ showToast('Skaner moduli yuklanmadi, qo\'lda kiriting', 'error');
  openManualInput();
  };
  document.head.appendChild(s);
@@ -645,7 +780,7 @@ async function startCamera() {
  // HTTPS / isSecureContext tekshiruvi (5.6)
  if (typeof window !== 'undefined' && window.isSecureContext === false) {
  console.warn('Kamera xavfsiz kontekst (HTTPS yoki localhost) talab qiladi');
- showToast('️ Kamera ishlashi uchun HTTPS kerak!', 'error');
+ showToast('Kamera ishlashi uchun HTTPS kerak!', 'error');
  if (cameraOff) cameraOff.style.display = 'flex';
  if (video) video.style.display = 'none';
  return;
@@ -855,7 +990,7 @@ function handleBarcodeDetected(rawCode) {
  const barcodeInput = document.getElementById('productBarcode');
  if (barcodeInput) barcodeInput.value = code;
  openModal('addProductModal');
- showToast(` Kod kiritildi: ${code}`);
+ showToast(`Kod kiritildi: ${code}`);
  updateScanHint('Shtrix-kodni ramka ichiga oling', '');
  return;
  }
@@ -868,36 +1003,36 @@ function handleBarcodeDetected(rawCode) {
  const added = addToCart(product);
  if (added) {
  showScanSuccess(product);
- updateScanHint(` ${product.name}`, 'success');
+ updateScanHint(`${product.name}`, 'success');
  } else {
- updateScanHint(`️ ${product.name} — omborda qolmagan`, 'error');
+ updateScanHint(`${product.name} — omborda qolmagan`, 'error');
  }
  } else {
  // Mahalliy bazada topilmadi — internetdan qidiramiz
  APP.isLookingUpOnline = true;
  SOUNDS.error();
- updateScanHint(` ${code} internetdan qidirilmoqda...`, 'success');
- showToast(` Kod: ${code} — qidirilmoqda...`);
+ updateScanHint(`${code} internetdan qidirilmoqda...`, 'success');
+ showToast(`Kod: ${code} — qidirilmoqda...`);
  vibrateDevice([100, 50, 100]);
 
  // Async internet qidiruv
  lookupBarcodeOnline(code).then(result => {
  if (result) {
  // Internet da topildi — modalni avtomatik to'ldirish
- updateScanHint(` Internetdan topildi: ${result.name}`, 'success');
- showToast(` "${result.name}" topildi!`);
+ updateScanHint(`Internetdan topildi: ${result.name}`, 'success');
+ showToast(`"${result.name}" topildi!`);
  vibrateDevice([80, 40, 80]);
  openAddProductModalWithData(result, code, rawCode);
  } else {
  // Internetda ham topilmadi
  showProductFoundCard(null, code);
- updateScanHint(` Kod: ${code} — yangi mahsulot`, 'error');
- showToast(` "${code}" topilmadi. Yangi mahsulot qo'shing.`);
+ updateScanHint(`Kod: ${code} — yangi mahsulot`, 'error');
+ showToast(`"${code}" topilmadi. Yangi mahsulot qo'shing.`);
  openAddProductModalWithData({ name: '', image: null, category: 'boshqa', brand: '' }, code, rawCode);
  }
  }).catch(() => {
  showProductFoundCard(null, code);
- updateScanHint(` Internet yo'q — yangi mahsulot`, 'error');
+ updateScanHint(`Internet yo'q — yangi mahsulot`, 'error');
  openAddProductModalWithData({ name: '', image: null, category: 'boshqa', brand: '' }, code, rawCode);
  }).finally(() => {
  APP.isLookingUpOnline = false;
@@ -946,14 +1081,8 @@ function flashScanner() {
 function updateScanHint(text, type) {
  const hint = document.getElementById('scanHint');
  if (!hint) return;
- let cleanText = String(text || '').replace(/[\u{1F000}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}]/gu, '').trim();
- let iconHtml = '';
- if (type === 'success') {
- iconHtml = icon('check', 14, 'icon-green') + ' ';
- } else if (type === 'error') {
- iconHtml = icon('alert', 14, 'icon-red') + ' ';
- }
- hint.innerHTML = iconHtml + escHtml(cleanText);
+ let cleanText = String(text || '').replace(/[\u{1F000}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\uFE0F]/gu, '').trim();
+ hint.textContent = cleanText;
  hint.style.color = type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : 'rgba(255,255,255,0.7)';
 }
 
@@ -1016,12 +1145,12 @@ function addFoundProductToCart() {
  const added = addToCart(APP.foundProduct);
  if (added) {
  showScanSuccess(APP.foundProduct);
- updateScanHint(` ${APP.foundProduct.name}`, 'success');
+ updateScanHint(`${APP.foundProduct.name}`, 'success');
  document.getElementById('productFoundCard').style.display = 'none';
  document.getElementById('manualBarcodeInput').value = '';
  APP.foundProduct = null;
  } else {
- updateScanHint(`️ ${APP.foundProduct.name} — omborda qolmagan`, 'error');
+ updateScanHint(`${APP.foundProduct.name} — omborda qolmagan`, 'error');
  }
 }
 
@@ -1110,7 +1239,7 @@ function addQuickItemToCart(itemId, event) {
  const added = addToCart(productObj);
  if (added) {
  showScanSuccess(productObj);
- updateScanHint(` ${productObj.name}`, 'success');
+ updateScanHint(`${productObj.name}`, 'success');
  }
 
  if (event && event.currentTarget) {
@@ -1174,8 +1303,7 @@ function deleteQuickItem(itemId) {
 // CART (SAVAT)
 // ─────────────────────────────────────────────
 function addToCart(product) {
- const isQuick = !!product.isQuick;
- const shouldTrack = !isQuick && !!product.trackStock;
+ const shouldTrack = isTracked(product);
 
  // Stock tekshiruvi (faqat trackStock=true bo'lganda)
  if (shouldTrack) {
@@ -1184,11 +1312,11 @@ function addToCart(product) {
  const currentStock = Number(product.stock) || 0;
  if (currentStock <= 0) {
  if (typeof SOUNDS !== 'undefined') SOUNDS.error();
- showToast(`️ ${product.name} — omborda qolmagan!`);
+ showToast(`Diqqat: ${product.name} — omborda qolmagan!`, 'warning');
  return false;
  }
  if (cartQty + 1 > currentStock) {
- if (!confirm(`️ Omborda ${currentStock} ta mavjud. ${cartQty + 1} ta qo'shilsinmi?`)) return false;
+ if (!confirm(`Diqqat: Omborda ${currentStock} ta mavjud. ${cartQty + 1} ta qo'shilsinmi?`)) return false;
  }
  }
 
@@ -1425,7 +1553,7 @@ function applyDiscount() {
  calcChange();
 }
 
-async function completeSale() {
+ async function completeSale() {
  if (APP.isCheckingOut) return;
  APP.isCheckingOut = true;
 
@@ -1439,7 +1567,7 @@ async function completeSale() {
  // Naqd to'lovda yetarlilik tekshiruvi
  const cashGivenVal = parseFloat(document.getElementById('cashGiven')?.value) || 0;
  if (APP.selectedPayment === 'cash' && cashGivenVal > 0 && cashGivenVal < grand) {
- showToast('️ Yetarli pul kiritilmagan');
+ showToast('Yetarli pul kiritilmagan', 'warning');
  return;
  }
 
@@ -1449,14 +1577,14 @@ async function completeSale() {
  const debtorSelect = document.getElementById('checkoutDebtorSelect');
  const debtorVal = debtorSelect ? debtorSelect.value : '';
  if (!debtorVal) {
- showToast('️ Nasiya uchun mijoz tanlanishi shart!');
+ showToast('Nasiya uchun mijoz tanlanishi shart!', 'warning');
  return;
  }
  if (debtorVal === 'new') {
  const newName = (document.getElementById('checkoutNewDebtorName')?.value || document.getElementById('newDebtorName')?.value || '').trim();
  const newPhone = (document.getElementById('checkoutNewDebtorPhone')?.value || document.getElementById('newDebtorPhone')?.value || '').trim();
  if (!newName) {
- showToast('️ Yangi mijoz ismini kiriting!');
+ showToast('Yangi mijoz ismini kiriting!', 'warning');
  return;
  }
  debtCustomer = {
@@ -1471,7 +1599,7 @@ async function completeSale() {
  debtCustomer = APP.debtors.find(d => d.id === debtorVal);
  }
  if (!debtCustomer) {
- showToast('️ Tanlangan mijoz topilmadi!');
+ showToast('Tanlangan mijoz topilmadi!', 'error');
  return;
  }
  }
@@ -1507,40 +1635,33 @@ async function completeSale() {
  refunds: []
  };
 
- // 2.4: Mutatsiyani faqat commit'dan KEYIN qo'llash
+ // 4: Faqat isTracked tovarlar ombori kamaytiriladi
  const stockUpdates = [];
  for (const item of APP.cart) {
  const prod = APP.products.find(p => p.id === item.id);
- if (prod && prod.trackStock !== false) {
+ if (prod && isTracked(prod)) {
  const currentStock = parseInt(prod.stock, 10) || 0;
  const newStock = Math.max(0, currentStock - item.qty);
- stockUpdates.push({ prod, newStock });
+ stockUpdates.push({ prod, qty: item.qty, newStock });
  }
  }
 
- if (!window.useDemo && window.firebaseDB && window.firebaseFns) {
- if (!navigator.onLine) {
- // Offline Firebase
- stockUpdates.forEach(({ prod, newStock }) => {
- prod.stock = newStock;
- prod.updatedAt = new Date().toISOString();
- });
- await enqueueOutbox({ action: 'saveBill', data: bill });
- APP.bills.unshift(bill);
- await saveLocalData();
- renderBills();
- } else {
- const { doc, writeBatch: wb } = window.firebaseFns;
+ // 5, 6, 10: Firestore increment va atomik saleBatch
+ if (!window.useDemo && window.firebaseDB && window.firebaseFns && navigator.onLine) {
+ try {
+ const { doc, writeBatch: wb, increment } = window.firebaseFns;
  const batch = wb(window.firebaseDB);
- for (const { prod, newStock } of stockUpdates) {
- const updatedDoc = { ...prod, stock: newStock, updatedAt: new Date().toISOString() };
- batch.set(doc(window.firebaseDB, 'products', prod.id), updatedDoc);
+ for (const { prod, newStock, qty } of stockUpdates) {
+ const pRef = doc(window.firebaseDB, 'products', prod.id);
+ if (typeof increment === 'function') {
+ batch.update(pRef, { stock: increment(-qty), updatedAt: new Date().toISOString() });
+ } else {
+ batch.update(pRef, { stock: newStock, updatedAt: new Date().toISOString() });
+ }
  }
  batch.set(doc(window.firebaseDB, 'bills', bill.id), bill);
- // Agar commit xato bersa catch ga o'tadi va APP.products mutatsiya qilinmaydi!
- await batch.commit();
+ await withTimeout(batch.commit(), 10000);
 
- // Faqat commit muvaffaqiyatli bo'lgach xotirani yangilash:
  stockUpdates.forEach(({ prod, newStock }) => {
  prod.stock = newStock;
  prod.updatedAt = new Date().toISOString();
@@ -1548,13 +1669,50 @@ async function completeSale() {
  APP.bills.unshift(bill);
  await saveLocalData();
  renderBills();
- }
- } else {
- // Demo / Local rejim
+ } catch (e) {
+ console.warn('Firebase sotuvda xato/timeout, outbox ga olinmoqda:', e);
  stockUpdates.forEach(({ prod, newStock }) => {
  prod.stock = newStock;
  prod.updatedAt = new Date().toISOString();
  });
+ await enqueueOutbox({
+ action: 'saleBatch',
+ bill,
+ products: stockUpdates.map(u => ({ id: u.prod.id, qtyChange: -u.qty, stock: u.newStock }))
+ });
+ APP.bills.unshift(bill);
+ await saveLocalData();
+ renderBills();
+ showToast("Navbatga qo'yildi, internet kelganda yuboriladi", 'warning');
+ }
+ } else if (!window.useDemo && window.firebaseDB && window.firebaseFns && !navigator.onLine) {
+ // Oflayn Firebase: saleBatch outbox
+ stockUpdates.forEach(({ prod, newStock }) => {
+ prod.stock = newStock;
+ prod.updatedAt = new Date().toISOString();
+ });
+ await enqueueOutbox({
+ action: 'saleBatch',
+ bill,
+ products: stockUpdates.map(u => ({ id: u.prod.id, qtyChange: -u.qty, stock: u.newStock }))
+ });
+ APP.bills.unshift(bill);
+ await saveLocalData();
+ renderBills();
+ showToast("Navbatga qo'yildi, internet kelganda yuboriladi", 'warning');
+ } else {
+ // Demo rejim yoki fallback
+ stockUpdates.forEach(({ prod, newStock }) => {
+ prod.stock = newStock;
+ prod.updatedAt = new Date().toISOString();
+ });
+ if (window.isFirebaseConfigured) {
+ await enqueueOutbox({
+ action: 'saleBatch',
+ bill,
+ products: stockUpdates.map(u => ({ id: u.prod.id, qtyChange: -u.qty, stock: u.newStock }))
+ });
+ }
  APP.bills.unshift(bill);
  await saveLocalData();
  renderBills();
@@ -1586,7 +1744,7 @@ async function completeSale() {
  closeModal('checkoutModal');
  APP.cart = [];
  updateCartUI();
- showToast(` To'lov qabul qilindi! ${formatPrice(grand)}`);
+ showToast(`To'lov qabul qilindi! ${formatPrice(grand)}`);
 
  setTimeout(() => {
  showPage('bills');
@@ -2317,7 +2475,7 @@ async function handleProductImageFile(event) {
  try {
  const compressedBase64 = await compressImage(file, 320, 320, 0.7);
  setModalProductImage(compressedBase64);
- showToast(' Mahsulot rasmi yuklandi');
+ showToast('Mahsulot rasmi yuklandi');
  } catch (err) {
  console.error('Rasm yuklash xatosi:', err);
  showToast('Rasmni yuklashda xatolik yuz berdi');
@@ -2371,7 +2529,7 @@ async function fetchProductImageOnline() {
  return;
  }
 
- showToast(' Internetdan haqiqiy fotosurat qidirilmoqda...');
+ showToast('Internetdan haqiqiy fotosurat qidirilmoqda...');
 
  // 1. Shtrix-kod orqali qidiruv
  if (barcode) {
@@ -2379,7 +2537,7 @@ async function fetchProductImageOnline() {
  const res = await lookupBarcodeOnline(barcode);
  if (res && res.image) {
  setModalProductImage(res.image);
- showToast(' Internetdan haqiqiy rasm topildi!');
+ showToast('Internetdan haqiqiy rasm topildi!');
  return;
  }
  } catch (e) {
@@ -2400,7 +2558,7 @@ async function fetchProductImageOnline() {
  if (p && (p.image_front_url || p.image_url || p.image_small_url)) {
  const img = p.image_front_url || p.image_url || p.image_small_url;
  setModalProductImage(img);
- showToast(` "${name}" uchun haqiqiy rasm topildi!`);
+ showToast(`"${name}" uchun haqiqiy rasm topildi!`);
  return;
  }
  }
@@ -2409,7 +2567,7 @@ async function fetchProductImageOnline() {
  }
  }
 
- showToast(' Internetdan bu mahsulot rasmi topilmadi. Kamera yoki galereyadan yuklang.');
+ showToast('Internetdan bu mahsulot rasmi topilmadi. Kamera yoki galereyadan yuklang.');
 }
 
 async function saveProduct() {
@@ -2491,18 +2649,19 @@ async function saveProduct() {
 
  if (syncedCount > 0) {
  SOUNDS.pop();
- showToast(` ${name} saqlandi! Toifadagi ${syncedCount} ta mahsulot narxi ham ${formatPrice(roundedPrice)} ga yangilandi!`);
+ showToast(`${name} saqlandi! Toifadagi ${syncedCount} ta mahsulot narxi ham ${formatPrice(roundedPrice)} ga yangilandi!`);
  } else if (!APP.editingProductId) {
  // Yangi mahsulot — Korzinka skaneri "TIQ!" tovushi
  SOUNDS.tiq();
- showToast(` ${name} saqlandi! Endi skanlashda avtomatik taniladi.`);
+ showToast(`${name} saqlandi! Endi skanlashda avtomatik taniladi.`);
  } else {
  SOUNDS.pop();
- showToast(` ${name} yangilandi`);
+ showToast(`${name} yangilandi`);
  }
 }
 
 async function saveProductToDB(product) {
+ normalizeProduct(product);
  if (!window.useDemo && window.firebaseDB) {
  if (!navigator.onLine) {
  await enqueueOutbox({ action: 'saveProduct', data: product });
@@ -2511,18 +2670,27 @@ async function saveProductToDB(product) {
  else APP.products.push(product);
  await saveLocalData();
  renderProducts();
- showToast('️ Oflayn saqlandi, navbatga qo\'yildi');
+ showToast('Oflayn saqlandi, navbatga qo\'yildi', 'warning');
  return;
  }
  try {
  const { doc, setDoc } = window.firebaseFns;
- await setDoc(doc(window.firebaseDB, 'products', product.id), product);
+ await withTimeout(setDoc(doc(window.firebaseDB, 'products', product.id), product), 10000);
  return;
  } catch (e) {
- console.error('Firebase saqlash xato:', e);
- showToast('Saqlanmadi, internetni tekshiring', 'error');
- throw e;
+ console.error('Firebase saqlash xato/timeout:', e);
+ await enqueueOutbox({ action: 'saveProduct', data: product });
+ const idx = APP.products.findIndex(p => p.id === product.id);
+ if (idx >= 0) APP.products[idx] = product;
+ else APP.products.push(product);
+ await saveLocalData();
+ renderProducts();
+ showToast("Navbatga qo'yildi, internet kelganda yuboriladi", 'warning');
+ return;
  }
+ }
+ if (window.isFirebaseConfigured) {
+ await enqueueOutbox({ action: 'saveProduct', data: product });
  }
  // Local/IndexedDB
  const idx = APP.products.findIndex(p => p.id === product.id);
@@ -2541,19 +2709,26 @@ async function deleteProduct(productId) {
  APP.products = APP.products.filter(p => p.id !== productId);
  await saveLocalData();
  renderProducts();
- showToast('️ Oflayn o\'chirildi, navbatga qo\'yildi');
+ showToast('Oflayn o\'chirildi, navbatga qo\'yildi', 'warning');
  return;
  }
  try {
  const { doc, deleteDoc } = window.firebaseFns;
- await deleteDoc(doc(window.firebaseDB, 'products', productId));
+ await withTimeout(deleteDoc(doc(window.firebaseDB, 'products', productId)), 10000);
  showToast('Mahsulot o\'chirildi');
  return;
  } catch (e) {
- console.error('Firebase o\'chirish xato:', e);
- showToast('O\'chirilmadi, internetni tekshiring', 'error');
+ console.error('Firebase o\'chirish xato/timeout:', e);
+ await enqueueOutbox({ action: 'deleteProduct', id: productId });
+ APP.products = APP.products.filter(p => p.id !== productId);
+ await saveLocalData();
+ renderProducts();
+ showToast("Navbatga qo'yildi, internet kelganda yuboriladi", 'warning');
  return;
  }
+ }
+ if (window.isFirebaseConfigured) {
+ await enqueueOutbox({ action: 'deleteProduct', id: productId });
  }
  APP.products = APP.products.filter(p => p.id !== productId);
  await saveLocalData();
@@ -2562,37 +2737,77 @@ async function deleteProduct(productId) {
 }
 
 async function saveDebtorToDB(debtor) {
- if (!window.useDemo && window.firebaseDB) {
+ if (!window.useDemo && window.firebaseDB && window.firebaseFns) {
  if (!navigator.onLine) {
- await enqueueOutbox({ action: 'saveDebtor', data: debtor });
+ await enqueueOutbox({ action: 'debtor', type: 'debtor', data: debtor });
  } else {
  try {
  const { doc, setDoc } = window.firebaseFns;
- await setDoc(doc(window.firebaseDB, 'debtors', debtor.id), debtor);
+ await withTimeout(setDoc(doc(window.firebaseDB, 'debtors', debtor.id), debtor), 10000);
  } catch (e) {
- console.error('Debtor saqlash xato:', e);
- await enqueueOutbox({ action: 'saveDebtor', data: debtor });
+ console.error('Debtor saqlash xato/timeout:', e);
+ await enqueueOutbox({ action: 'debtor', type: 'debtor', data: debtor });
+ showToast("Navbatga qo'yildi, internet kelganda yuboriladi", 'warning');
  }
  }
+ } else if (window.isFirebaseConfigured) {
+ await enqueueOutbox({ action: 'debtor', type: 'debtor', data: debtor });
  }
- await saveNasiyaData();
+}
+
+async function deleteDebtorFromDB(debtorId) {
+ if (!window.useDemo && window.firebaseDB && window.firebaseFns) {
+ if (!navigator.onLine) {
+ await enqueueOutbox({ action: 'deleteDebtor', type: 'deleteDebtor', id: debtorId });
+ } else {
+ try {
+ const { doc, deleteDoc } = window.firebaseFns;
+ await withTimeout(deleteDoc(doc(window.firebaseDB, 'debtors', debtorId)), 10000);
+ } catch (e) {
+ console.error('Debtor o\'chirish xato/timeout:', e);
+ await enqueueOutbox({ action: 'deleteDebtor', type: 'deleteDebtor', id: debtorId });
+ }
+ }
+ } else if (window.isFirebaseConfigured) {
+ await enqueueOutbox({ action: 'deleteDebtor', type: 'deleteDebtor', id: debtorId });
+ }
 }
 
 async function saveDebtToDB(debt) {
- if (!window.useDemo && window.firebaseDB) {
+ if (!window.useDemo && window.firebaseDB && window.firebaseFns) {
  if (!navigator.onLine) {
- await enqueueOutbox({ action: 'saveDebt', data: debt });
+ await enqueueOutbox({ action: 'debt', type: 'debt', data: debt });
  } else {
  try {
  const { doc, setDoc } = window.firebaseFns;
- await setDoc(doc(window.firebaseDB, 'debts', debt.id), debt);
+ await withTimeout(setDoc(doc(window.firebaseDB, 'debts', debt.id), debt), 10000);
  } catch (e) {
- console.error('Debt saqlash xato:', e);
- await enqueueOutbox({ action: 'saveDebt', data: debt });
+ console.error('Debt saqlash xato/timeout:', e);
+ await enqueueOutbox({ action: 'debt', type: 'debt', data: debt });
+ showToast("Navbatga qo'yildi, internet kelganda yuboriladi", 'warning');
  }
  }
+ } else if (window.isFirebaseConfigured) {
+ await enqueueOutbox({ action: 'debt', type: 'debt', data: debt });
  }
- await saveNasiyaData();
+}
+
+async function deleteDebtFromDB(debtId) {
+ if (!window.useDemo && window.firebaseDB && window.firebaseFns) {
+ if (!navigator.onLine) {
+ await enqueueOutbox({ action: 'deleteDebt', type: 'deleteDebt', id: debtId });
+ } else {
+ try {
+ const { doc, deleteDoc } = window.firebaseFns;
+ await withTimeout(deleteDoc(doc(window.firebaseDB, 'debts', debtId)), 10000);
+ } catch (e) {
+ console.error('Debt o\'chirish xato/timeout:', e);
+ await enqueueOutbox({ action: 'deleteDebt', type: 'deleteDebt', id: debtId });
+ }
+ }
+ } else if (window.isFirebaseConfigured) {
+ await enqueueOutbox({ action: 'deleteDebt', type: 'deleteDebt', id: debtId });
+ }
 }
 
 async function deleteAllProducts() {
@@ -2648,7 +2863,7 @@ function toggleLowStockFilter() {
  const card = document.getElementById('lowStockCard');
  if (card) card.classList.toggle('active', _filterLowStock);
  renderProducts();
- if (_filterLowStock) showToast(' Faqat kam qolgan tovarlar koʻrsatilmoqda');
+ if (_filterLowStock) showToast('Faqat kam qolgan tovarlar koʻrsatilmoqda');
 }
 
 function renderProducts() {
@@ -2734,28 +2949,141 @@ function scanForModal() {
  closeModal('addProductModal');
  showPage('scanner');
  APP._scanForModal = true;
- showToast(' Shtrix-kodni kameraga ko\'rsating — avtomatik kiritiladi');
- updateScanHint(' Modal uchun skanerlash rejimi...', 'success');
+ showToast('Shtrix-kodni kameraga ko\'rsating — avtomatik kiritiladi');
+ updateScanHint('Modal uchun skanerlash rejimi...', 'success');
 }
 
 // ─────────────────────────────────────────────
 // FIREBASE REAL-TIME LISTENERS
 // ─────────────────────────────────────────────
 function listenFirestoreProducts() {
+ if (!window.firebaseDB || !window.firebaseFns || !window.firebaseFns.onSnapshot) return;
  const { collection, onSnapshot } = window.firebaseFns;
- onSnapshot(collection(window.firebaseDB, 'products'), (snap) => {
- APP.products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
- renderProducts();
- });
+ const colRef = collection(window.firebaseDB, 'products');
+ const handler = async (snap) => {
+  let prods = snap.docs.map(d => normalizeProduct({ id: d.id, ...d.data() }));
+  if (snap.metadata && snap.metadata.hasPendingWrites) {
+   const outbox = await getOutboxQueue();
+   const prodMap = new Map(prods.map(p => [p.id, p]));
+   for (const item of outbox) {
+    if ((item.action === 'saveProduct' || item.action === 'product' || item.type === 'product') && item.data) {
+     prodMap.set(item.data.id, normalizeProduct({ ...(prodMap.get(item.data.id) || {}), ...item.data }));
+    } else if (item.action === 'deleteProduct' && item.id) {
+     prodMap.delete(item.id);
+    } else if ((item.action === 'saleBatch' || item.action === 'refundBatch') && Array.isArray(item.products)) {
+     for (const pUp of item.products) {
+      const existing = prodMap.get(pUp.id);
+      if (existing) {
+       if (pUp.stock !== undefined) {
+        existing.stock = pUp.stock;
+       } else if (pUp.qtyChange !== undefined) {
+        existing.stock = (parseInt(existing.stock, 10) || 0) + pUp.qtyChange;
+       }
+       prodMap.set(pUp.id, existing);
+      }
+     }
+    }
+   }
+   prods = Array.from(prodMap.values());
+  }
+  APP.products = prods;
+  renderProducts();
+ };
+ try {
+  return onSnapshot(colRef, { includeMetadataChanges: true }, handler);
+ } catch (e) {
+  return onSnapshot(colRef, handler);
+ }
 }
 
 function listenFirestoreBills() {
+ if (!window.firebaseDB || !window.firebaseFns || !window.firebaseFns.onSnapshot) return;
  const { collection, onSnapshot } = window.firebaseFns;
- onSnapshot(collection(window.firebaseDB, 'bills'), (snap) => {
- APP.bills = snap.docs.map(d => ({ id: d.id, ...d.data() }))
- .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
- renderBills();
- });
+ const colRef = collection(window.firebaseDB, 'bills');
+ const handler = async (snap) => {
+  let bills = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (snap.metadata && snap.metadata.hasPendingWrites) {
+   const outbox = await getOutboxQueue();
+   const billMap = new Map(bills.map(b => [b.id, b]));
+   for (const item of outbox) {
+    if ((item.action === 'saveBill' || item.action === 'bill' || item.type === 'bill') && item.data) {
+     billMap.set(item.data.id, item.data);
+    } else if ((item.action === 'saleBatch' || item.action === 'refundBatch') && item.bill) {
+     billMap.set(item.bill.id, item.bill);
+    }
+   }
+   bills = Array.from(billMap.values());
+  }
+  bills.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  APP.bills = bills;
+  renderBills();
+ };
+ try {
+  return onSnapshot(colRef, { includeMetadataChanges: true }, handler);
+ } catch (e) {
+  return onSnapshot(colRef, handler);
+ }
+}
+
+function listenFirestoreDebtors() {
+ if (!window.firebaseDB || !window.firebaseFns || !window.firebaseFns.onSnapshot) return;
+ const { collection, onSnapshot } = window.firebaseFns;
+ const colRef = collection(window.firebaseDB, 'debtors');
+ const handler = async (snap) => {
+  let debtors = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (snap.metadata && snap.metadata.hasPendingWrites) {
+   const outbox = await getOutboxQueue();
+   const debtorMap = new Map(debtors.map(d => [d.id, d]));
+   for (const item of outbox) {
+    if ((item.action === 'saveDebtor' || item.action === 'debtor' || item.type === 'debtor') && item.data) {
+     debtorMap.set(item.data.id, item.data);
+    } else if (item.action === 'deleteDebtor' && item.id) {
+     debtorMap.delete(item.id);
+    }
+   }
+   debtors = Array.from(debtorMap.values());
+  }
+  APP.debtors = debtors;
+  renderDebtors();
+  updateNasiyaStats();
+ };
+ try {
+  return onSnapshot(colRef, { includeMetadataChanges: true }, handler);
+ } catch (e) {
+  return onSnapshot(colRef, handler);
+ }
+}
+
+function listenFirestoreDebts() {
+ if (!window.firebaseDB || !window.firebaseFns || !window.firebaseFns.onSnapshot) return;
+ const { collection, onSnapshot } = window.firebaseFns;
+ const colRef = collection(window.firebaseDB, 'debts');
+ const handler = async (snap) => {
+  let debts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (snap.metadata && snap.metadata.hasPendingWrites) {
+   const outbox = await getOutboxQueue();
+   const debtMap = new Map(debts.map(d => [d.id, d]));
+   for (const item of outbox) {
+    if ((item.action === 'saveDebt' || item.action === 'debt' || item.type === 'debt') && item.data) {
+     debtMap.set(item.data.id, item.data);
+    } else if (item.action === 'deleteDebt' && item.id) {
+     debtMap.delete(item.id);
+    } else if ((item.action === 'saleBatch' || item.action === 'refundBatch') && item.debt) {
+     debtMap.set(item.debt.id, item.debt);
+    }
+   }
+   debts = Array.from(debtMap.values());
+  }
+  APP.debts = debts;
+  renderDebtors();
+  updateNasiyaStats();
+  updateNasiyaBadge();
+ };
+ try {
+  return onSnapshot(colRef, { includeMetadataChanges: true }, handler);
+ } catch (e) {
+  return onSnapshot(colRef, handler);
+ }
 }
 
 // ─────────────────────────────────────────────
@@ -2768,7 +3096,7 @@ async function saveBill(bill) {
  APP.bills.unshift(bill);
  await saveLocalData();
  renderBills();
- showToast('️ Chek oflayn saqlandi, navbatga qo\'yildi');
+ showToast('Chek oflayn saqlandi, navbatga qo\'yildi');
  return;
  }
  try {
@@ -2782,6 +3110,37 @@ async function saveBill(bill) {
  }
  }
  APP.bills.unshift(bill);
+ await saveLocalData();
+ renderBills();
+}
+
+async function updateBillInDB(bill) {
+ if (!window.useDemo && window.firebaseDB) {
+ if (!navigator.onLine) {
+ await enqueueOutbox({ action: 'saveBill', data: bill });
+ await saveLocalData();
+ renderBills();
+ showToast('Chek oflayn saqlandi, navbatga qo\'yildi', 'warning');
+ return;
+ }
+ try {
+ const { doc, setDoc } = window.firebaseFns;
+ await setDoc(doc(window.firebaseDB, 'bills', bill.id), bill);
+ await saveLocalData();
+ renderBills();
+ return;
+ } catch (e) {
+ console.error('Chek yangilash xato:', e);
+ await enqueueOutbox({ action: 'saveBill', data: bill });
+ await saveLocalData();
+ renderBills();
+ showToast("Navbatga qo'yildi, internet kelganda yuboriladi", 'warning');
+ return;
+ }
+ }
+ if (window.isFirebaseConfigured) {
+ await enqueueOutbox({ action: 'saveBill', data: bill });
+ }
  await saveLocalData();
  renderBills();
 }
@@ -2939,7 +3298,7 @@ async function submitRefund() {
  .reduce((s, r) => s + (Number(r.qty) || 0), 0);
  const available = Math.max(0, item.qty - alreadyRefunded);
  if (qty > available) {
- showToast(`️ ${item.name} uchun koʻpi bilan ${available} ta qaytarish mumkin!`);
+ showToast(`Diqqat: ${item.name} uchun koʻpi bilan ${available} ta qaytarish mumkin!`, 'warning');
  return;
  }
  toRefund.push({ item, qty });
@@ -2947,9 +3306,16 @@ async function submitRefund() {
  }
 
  if (toRefund.length === 0) {
- showToast('️ Qaytarish miqdorini kiriting');
+ showToast('Qaytarish miqdorini kiriting', 'warning');
  return;
  }
+
+ // 14: Xotira nusxasini saqlash (rollback uchun)
+ const oldRefunds = JSON.parse(JSON.stringify(bill.refunds || []));
+ const oldStockStates = toRefund.map(({ item }) => {
+ const prod = APP.products.find(p => p.id === item.id);
+ return prod ? { prod, stock: prod.stock, updatedAt: prod.updatedAt } : null;
+ }).filter(Boolean);
 
  let totalRefundAmount = 0;
  bill.refunds = bill.refunds || [];
@@ -2964,38 +3330,157 @@ async function submitRefund() {
  amount: itemRefundAmount,
  date: new Date().toISOString()
  });
-
- // Qoldiqni tiklash (faqat trackStock !== false bo'lsa)
- const prod = APP.products.find(p => p.id === item.id);
- if (prod && prod.trackStock !== false) {
- prod.stock = (parseInt(prod.stock, 10) || 0) + qty;
- prod.updatedAt = new Date().toISOString();
- await saveProductToDB(prod);
- }
  }
 
- // Nasiya cheki bo'lsa qarzni kamaytirish
- if (bill.paymentMethod === 'debt' && bill.debtorId) {
- const debt = APP.debts.find(d => d.billId === bill.id || d.debtorId === bill.debtorId);
+ // 2: Nasiya cheki bo'lsa qarzni topish: faqat billId orqali (|| d.debtorId olib tashlandi)
+ let debtToUpdate = null;
+ let oldDebtState = null;
+ if (bill.paymentMethod === 'debt') {
+ const debt = APP.debts.find(d => d.billId === bill.id);
  if (debt) {
- debt.amount = Math.max(0, debt.amount - totalRefundAmount);
+ oldDebtState = { amount: debt.amount, paidAmount: debt.paidAmount, payments: [...(debt.payments || [])] };
+ const paidAmount = Number(debt.paidAmount) || 0;
+ debt.amount = Math.max(paidAmount, (Number(debt.amount) || 0) - totalRefundAmount);
  debt.payments = debt.payments || [];
  debt.payments.push({
  amount: totalRefundAmount,
  note: `Vozvrat: Chek #${bill.id.slice(-6).toUpperCase()}`,
  date: new Date().toISOString()
  });
- await saveDebtToDB(debt);
- updateNasiyaBadge();
+ debtToUpdate = debt;
+ } else {
+ showToast('Eski qarz uchun billId topilmadi', 'warning');
  }
  }
 
- await saveBill(bill);
+ // 10 & 14: Saqlash bosqichi (atomik)
+  if (!window.useDemo && window.firebaseDB && window.firebaseFns && navigator.onLine) {
+   try {
+    const { doc, writeBatch: wb, increment } = window.firebaseFns;
+    const batch = wb(window.firebaseDB);
+
+    for (const { item, qty } of toRefund) {
+     const prod = APP.products.find(p => p.id === item.id);
+     if (prod && isTracked(prod)) {
+      const pRef = doc(window.firebaseDB, 'products', prod.id);
+      if (typeof increment === 'function') {
+       batch.update(pRef, { stock: increment(qty), updatedAt: new Date().toISOString() });
+      } else {
+       batch.update(pRef, { stock: (parseInt(prod.stock, 10) || 0) + qty, updatedAt: new Date().toISOString() });
+      }
+     }
+    }
+
+    batch.set(doc(window.firebaseDB, 'bills', bill.id), bill);
+    if (debtToUpdate) {
+     batch.set(doc(window.firebaseDB, 'debts', debtToUpdate.id), debtToUpdate);
+    }
+
+    await withTimeout(batch.commit(), 10000);
+
+    for (const { item, qty } of toRefund) {
+     const prod = APP.products.find(p => p.id === item.id);
+     if (prod && isTracked(prod)) {
+      prod.stock = (parseInt(prod.stock, 10) || 0) + qty;
+      prod.updatedAt = new Date().toISOString();
+     }
+    }
+    await saveLocalData();
+    if (debtToUpdate) await saveNasiyaData();
+   } catch (commitErr) {
+    console.warn('Firebase qaytarishda commit xatosi, refundBatch outbox ga olinmoqda:', commitErr);
+    for (const { item, qty } of toRefund) {
+     const prod = APP.products.find(p => p.id === item.id);
+     if (prod && isTracked(prod)) {
+      prod.stock = (parseInt(prod.stock, 10) || 0) + qty;
+      prod.updatedAt = new Date().toISOString();
+     }
+    }
+    await enqueueOutbox({
+     action: 'refundBatch',
+     type: 'refundBatch',
+     bill,
+     debt: debtToUpdate,
+     products: toRefund
+      .filter(({ item }) => {
+       const prod = APP.products.find(x => x.id === item.id);
+       return prod && isTracked(prod);
+      })
+      .map(({ item, qty }) => ({
+       id: item.id,
+       qtyChange: qty,
+       stock: (APP.products.find(x => x.id === item.id) || {}).stock
+      }))
+    });
+    await saveLocalData();
+    if (debtToUpdate) await saveNasiyaData();
+    showToast("Navbatga qo'yildi, internet kelganda yuboriladi", 'warning');
+   }
+  } else if (!window.useDemo && window.firebaseDB && window.firebaseFns && !navigator.onLine) {
+   // Oflayn Firebase: refundBatch outbox yozuvi
+   for (const { item, qty } of toRefund) {
+    const prod = APP.products.find(p => p.id === item.id);
+    if (prod && isTracked(prod)) {
+     prod.stock = (parseInt(prod.stock, 10) || 0) + qty;
+     prod.updatedAt = new Date().toISOString();
+    }
+   }
+   await enqueueOutbox({
+    action: 'refundBatch',
+    type: 'refundBatch',
+    bill,
+    debt: debtToUpdate,
+    products: toRefund
+     .filter(({ item }) => {
+      const prod = APP.products.find(x => x.id === item.id);
+      return prod && isTracked(prod);
+     })
+     .map(({ item, qty }) => ({
+      id: item.id,
+      qtyChange: qty,
+      stock: (APP.products.find(x => x.id === item.id) || {}).stock
+     }))
+   });
+   await saveLocalData();
+   if (debtToUpdate) await saveNasiyaData();
+   showToast("Navbatga qo'yildi, internet kelganda yuboriladi", 'warning');
+  } else {
+   // Demo rejim (yoki configured demo fallback)
+   for (const { item, qty } of toRefund) {
+    const prod = APP.products.find(p => p.id === item.id);
+    if (prod && isTracked(prod)) {
+     prod.stock = (parseInt(prod.stock, 10) || 0) + qty;
+     prod.updatedAt = new Date().toISOString();
+    }
+   }
+   if (window.isFirebaseConfigured) {
+    await enqueueOutbox({
+     action: 'refundBatch',
+     type: 'refundBatch',
+     bill,
+     debt: debtToUpdate,
+     products: toRefund
+      .filter(({ item }) => {
+       const prod = APP.products.find(x => x.id === item.id);
+       return prod && isTracked(prod);
+      })
+      .map(({ item, qty }) => ({
+       id: item.id,
+       qtyChange: qty,
+       stock: (APP.products.find(x => x.id === item.id) || {}).stock
+      }))
+    });
+   }
+   await saveLocalData();
+   if (debtToUpdate) await saveNasiyaData();
+  }
+ 
+  if (debtToUpdate) updateNasiyaBadge();
  renderBills();
  renderProducts();
  closeModal('refundModal');
  showBillDetail(bill.id);
- showToast(` ${formatPrice(totalRefundAmount)} lik tovar qaytarildi!`);
+ showToast(`${formatPrice(totalRefundAmount)} lik tovar qaytarildi!`);
 }
 
 // ─────────────────────────────────────────────
@@ -3162,7 +3647,7 @@ async function exportBackupJSON() {
  URL.revokeObjectURL(url);
 
  localStorage.setItem('scanpos_last_backup_time', Date.now().toString());
- showToast(' Zaxira nusxa muvaffaqiyatli yuklab olindi!');
+ showToast('Zaxira nusxa muvaffaqiyatli yuklab olindi!');
  } catch (err) {
  console.error('Backup eksport xato:', err);
  showToast('Zaxira olishda xatolik yuz berdi');
@@ -3183,7 +3668,7 @@ async function handleRestoreFile(event) {
  try {
  const data = JSON.parse(e.target.result);
  if (!data || (!data.products && !data.bills && !data.version)) {
- showToast(' Notoʻgʻri zaxira fayl formati!', 'error');
+ showToast('Notoʻgʻri zaxira fayl formati!', 'error');
  return;
  }
 
@@ -3225,6 +3710,10 @@ async function handleRestoreFile(event) {
  if (data.quickItems) APP.quickItems = data.quickItems;
  }
 
+ if (Array.isArray(APP.products)) {
+ APP.products.forEach(p => normalizeProduct(p));
+ }
+
  await saveLocalData();
  await saveNasiyaData();
  renderProducts();
@@ -3232,7 +3721,7 @@ async function handleRestoreFile(event) {
  updateProductStats();
  updateNasiyaBadge();
 
- showToast(' Zaxira nusxa muvaffaqiyatli tiklandi!');
+ showToast('Zaxira nusxa muvaffaqiyatli tiklandi!');
  } catch (err) {
  console.error('Tiklash xatosi:', err);
  showToast('Faylni oʻqishda xatolik yuz berdi: ' + err.message, 'error');
@@ -3278,7 +3767,7 @@ function exportBillsCSV() {
  a.click();
  document.body.removeChild(a);
  URL.revokeObjectURL(url);
- showToast(' CSV fayl yuklab olindi!');
+ showToast('CSV fayl yuklab olindi!');
  } catch (err) {
  console.error('CSV eksport xato:', err);
  showToast('CSV eksportda xatolik yuz berdi');
@@ -3291,7 +3780,7 @@ function checkBackupReminder() {
  const sevenDays = 7 * 24 * 60 * 60 * 1000;
  if (!last || (now - last > sevenDays)) {
  setTimeout(() => {
- showToast('️ 7 kundan beri zaxira nusxa olinmagan! Sozlamalardan zaxirani yuklab oling.', 'warning');
+ showToast('7 kundan beri zaxira nusxa olinmagan! Sozlamalardan zaxirani yuklab oling.', 'warning');
  }, 3000);
  }
 }
@@ -3466,21 +3955,10 @@ async function loadLocalData() {
  console.warn('loadLocalData xato:', e);
  }
 
- // Migratsiya: trackStock undefined bo'lsa, stock > 0 bo'lsa true, aks holda false
- let migrated = false;
+ // Migratsiya: normalizeProduct orqali
  if (Array.isArray(APP.products)) {
- APP.products.forEach(prod => {
- if (prod.trackStock === undefined) {
- prod.trackStock = (typeof prod.stock === 'number' && prod.stock > 0);
- migrated = true;
- }
- if (prod.stock === 999 && !prod.isQuick) {
- prod.isQuick = true;
- prod.trackStock = false;
- migrated = true;
- }
- });
- if (migrated) saveLocalData();
+ APP.products.forEach(prod => normalizeProduct(prod));
+ saveLocalData();
  }
 
  // Nasiya ma'lumotlarini ham yuklash
@@ -3494,10 +3972,14 @@ async function saveLocalData() {
  localStorage.setItem('scanpos_cart', JSON.stringify(APP.cart || []));
 
  // Mahsulotlar (rasmlari bilan) va cheklar IndexedDB (ScanDB) da saqlanadi
- await ScanDB.set('scanpos_products', APP.products || []);
- await ScanDB.set('scanpos_bills', APP.bills || []);
+ const ok1 = await ScanDB.set('scanpos_products', APP.products || []);
+ const ok2 = await ScanDB.set('scanpos_bills', APP.bills || []);
+ if (ok1 === false || ok2 === false) {
+ showToast('Xotira to\'ldi yoki saqlanmadi', 'error');
+ }
  } catch (e) {
  console.warn('saveLocalData xato:', e);
+ showToast('Xotira to\'ldi yoki saqlanmadi', 'error');
  }
 }
 
@@ -3714,7 +4196,18 @@ window.saveBill = saveBill;
 window.addToCart = addToCart;
 window.handleBarcodeDetected = handleBarcodeDetected;
 window.saveDebtorToDB = saveDebtorToDB;
+window.deleteDebtorFromDB = deleteDebtorFromDB;
 window.saveDebtToDB = saveDebtToDB;
+window.deleteDebtFromDB = deleteDebtFromDB;
+window.updateBillInDB = updateBillInDB;
+window.ScanDB = ScanDB;
+window.withTimeout = withTimeout;
+window.normalizeProduct = normalizeProduct;
+window.isTracked = isTracked;
+window.sanitizePhone = sanitizePhone;
+window.enqueueOutbox = enqueueOutbox;
+window.processOutbox = processOutbox;
+window.getOutboxQueue = getOutboxQueue;
 
 // ─────────────────────────────────────────────
 // ANALYTICS MODULE
@@ -3805,7 +4298,7 @@ function renderAnalytics() {
  const msg = document.createElement('div');
  msg.className = 'chart-fallback-msg';
  msg.style.cssText = 'text-align:center;padding:30px 10px;color:var(--text3);font-size:0.85rem;';
- msg.textContent = '️ Grafik yuklanmadi (Internet tarmogʻini tekshiring)';
+ msg.textContent = 'Grafik yuklanmadi (Internet tarmogʻini tekshiring)';
  cv.style.display = 'none';
  cv.parentElement.appendChild(msg);
  }
@@ -4155,17 +4648,17 @@ function renderDebtors(list) {
  return `
  <div class="debtor-card ${statusClass}">
  <div class="debtor-card-main" onclick="toggleDebtorDetail('${debtor.id}')">
- <div class="debtor-avatar">${debtor.name[0].toUpperCase()}</div>
- <div class="debtor-info">
- <div class="debtor-name">${escHtml(debtor.name)}
- <span class="debtor-status-dot ${isPaid ? 'dot-green' : balance > 100000 ? 'dot-red' : 'dot-yellow'}"></span>
- </div>
- <div class="debtor-meta">
- ${debtor.phone
- ? `<a href="tel:${debtor.phone}" onclick="event.stopPropagation()">${icon('phone', 13)} ${debtor.phone}</a>`
- : `<span>${icon('user', 13)} Telefon yo'q</span>`}
- </div>
- </div>
+ <div class="debtor-avatar">${escHtml((debtor.name || '')[0] ? (debtor.name || '')[0].toUpperCase() : '')}</div>
+     <div class="debtor-info">
+      <div class="debtor-name">${escHtml(debtor.name)}
+       <span class="debtor-status-dot ${isPaid ? 'dot-green' : balance > 100000 ? 'dot-red' : 'dot-yellow'}"></span>
+      </div>
+      <div class="debtor-meta">
+       ${debtor.phone
+        ? `<a href="tel:${escHtml(sanitizePhone(debtor.phone))}" onclick="event.stopPropagation()">${icon('phone', 13)} ${escHtml(debtor.phone)}</a>`
+        : `<span>${icon('user', 13)} Telefon yo'q</span>`}
+      </div>
+     </div>
  <div class="debtor-balance">
  <div class="debtor-balance-val ${isPaid ? 'debt-zero' : 'debt-active'}">${formatPrice(balance)}</div>
  <div class="debtor-balance-label">qarz</div>
@@ -4236,7 +4729,7 @@ function filterDebtors(query) {
 
 // ── Mijoz (debtor) CRUD ──
 
-function saveDebtor() {
+async function saveDebtor() {
  const name = document.getElementById('debtorName').value.trim();
  if (!name) { showToast('Ism kiritilishi shart', 'warning'); return; }
 
@@ -4244,16 +4737,22 @@ function saveDebtor() {
  const phone = document.getElementById('debtorPhone').value.trim();
  const note = document.getElementById('debtorNote').value.trim();
 
+ let targetDebtor;
  if (existingId) {
- const d = APP.debtors.find(x => x.id === existingId);
- if (d) { d.name = name; d.phone = phone; d.note = note; }
- showToast(`"${name}" yangilandi`, 'success');
+  targetDebtor = APP.debtors.find(x => x.id === existingId);
+  if (targetDebtor) { targetDebtor.name = name; targetDebtor.phone = phone; targetDebtor.note = note; }
+  showToast(`"${name}" yangilandi`, 'success');
  } else {
- APP.debtors.unshift({ id: generateId(), name, phone, note, createdAt: new Date().toISOString() });
- showToast(`"${name}" qo'shildi`, 'success');
+  targetDebtor = { id: generateId(), name, phone, note, createdAt: new Date().toISOString() };
+  APP.debtors.unshift(targetDebtor);
+  showToast(`"${name}" qo'shildi`, 'success');
  }
 
- saveNasiyaData();
+ if (targetDebtor) {
+  await saveDebtorToDB(targetDebtor);
+ }
+
+ await saveNasiyaData();
  closeModal('addDebtorModal');
  renderDebtors();
  updateNasiyaStats();
@@ -4270,17 +4769,24 @@ function editDebtor(debtorId) {
  openModal('addDebtorModal');
 }
 
-function deleteDebtor(debtorId) {
+async function deleteDebtor(debtorId) {
  const d = APP.debtors.find(x => x.id === debtorId);
  if (!d) return;
  if (debtorBalance(debtorId) > 0) {
- if (!confirm(`"${d.name}" da ${formatPrice(debtorBalance(debtorId))} qarz bor! Baribir o'chirishni xohlaysizmi?`)) return;
+  if (!confirm(`"${d.name}" da ${formatPrice(debtorBalance(debtorId))} qarz bor! Baribir o'chirishni xohlaysizmi?`)) return;
  } else {
- if (!confirm(`"${d.name}" ni o'chirishni tasdiqlaysizmi?`)) return;
+  if (!confirm(`"${d.name}" ni o'chirishni tasdiqlaysizmi?`)) return;
  }
+ const relatedDebts = APP.debts.filter(x => x.debtorId === debtorId);
  APP.debtors = APP.debtors.filter(x => x.id !== debtorId);
  APP.debts = APP.debts.filter(x => x.debtorId !== debtorId);
- saveNasiyaData();
+
+ await deleteDebtorFromDB(debtorId);
+ for (const rd of relatedDebts) {
+  await deleteDebtFromDB(rd.id);
+ }
+
+ await saveNasiyaData();
  renderDebtors();
  updateNasiyaStats();
  showToast('O\'chirildi', 'info');
@@ -4298,23 +4804,24 @@ function openAddDebtModal(debtorId) {
  openModal('addDebtModal');
 }
 
-function recordDebt() {
+async function recordDebt() {
  const debtorId = document.getElementById('debtCustomerId').value;
  const amount = parseFloat(document.getElementById('debtAmount').value) || 0;
  if (!debtorId || amount <= 0) { showToast('Miqdor kiritilishi shart', 'warning'); return; }
 
  const debt = {
- id: generateId(),
- debtorId,
- amount,
- paidAmount: 0,
- description: document.getElementById('debtDescription').value.trim() || 'Nasiya',
- dueDate: document.getElementById('debtDueDate').value || null,
- createdAt: new Date().toISOString(),
- payments: []
+  id: generateId(),
+  debtorId,
+  amount,
+  paidAmount: 0,
+  description: document.getElementById('debtDescription').value.trim() || 'Nasiya',
+  dueDate: document.getElementById('debtDueDate').value || null,
+  createdAt: new Date().toISOString(),
+  payments: []
  };
  APP.debts.unshift(debt);
- saveNasiyaData();
+ await saveDebtToDB(debt);
+ await saveNasiyaData();
  closeModal('addDebtModal');
  renderDebtors();
  updateNasiyaStats();
@@ -4340,7 +4847,7 @@ function openPayDebtModal(debtId) {
  openModal('payDebtModal');
 }
 
-function submitPayment() {
+async function submitPayment() {
  const debtId = document.getElementById('payDebtId').value;
  const amount = parseFloat(document.getElementById('payAmount').value) || 0;
  if (!debtId || amount <= 0) { showToast('To\'lov miqdori kiritilishi shart', 'warning'); return; }
@@ -4354,7 +4861,8 @@ function submitPayment() {
  debt.payments = debt.payments || [];
  debt.payments.push({ amount: paid, note: document.getElementById('payNote').value.trim(), date: new Date().toISOString() });
 
- saveNasiyaData();
+ await saveDebtToDB(debt);
+ await saveNasiyaData();
  if (typeof SOUNDS !== 'undefined') SOUNDS.cash();
  closeModal('payDebtModal');
  renderDebtors();
@@ -4363,9 +4871,9 @@ function submitPayment() {
  const debtor = APP.debtors.find(d => d.id === debt.debtorId);
  const remaining = debt.amount - debt.paidAmount;
  if (remaining <= 0) {
- showToast(`${debtor ? debtor.name : 'Mijoz'} ning qarzi to'liq to'landi!`, 'success');
+  showToast(`${debtor ? debtor.name : 'Mijoz'} ning qarzi to'liq to'landi!`, 'success');
  } else {
- showToast(`${formatPrice(paid)} qabul qilindi. Qoldi: ${formatPrice(remaining)}`, 'success');
+  showToast(`${formatPrice(paid)} qabul qilindi. Qoldi: ${formatPrice(remaining)}`, 'success');
  }
 }
 
@@ -4395,3 +4903,18 @@ window.toggleLowStockFilter = toggleLowStockFilter;
 window.onCheckoutDebtorChange = onCheckoutDebtorChange;
 window.ScanDB = ScanDB;
 window.APP = APP;
+window.saveDebtor = saveDebtor;
+window.deleteDebtor = deleteDebtor;
+window.recordDebt = recordDebt;
+window.submitPayment = submitPayment;
+window.saveDebtorToDB = saveDebtorToDB;
+window.deleteDebtorFromDB = deleteDebtorFromDB;
+window.saveDebtToDB = saveDebtToDB;
+window.deleteDebtFromDB = deleteDebtFromDB;
+window.listenFirestoreProducts = listenFirestoreProducts;
+window.listenFirestoreBills = listenFirestoreBills;
+window.listenFirestoreDebtors = listenFirestoreDebtors;
+window.listenFirestoreDebts = listenFirestoreDebts;
+window.renderDebtors = renderDebtors;
+window.updateNasiyaStats = updateNasiyaStats;
+window.updateScanHint = updateScanHint;

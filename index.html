@@ -61,11 +61,14 @@
       appId: "1:123456789:web:abcdef123456"
     };
 
+    window.firebaseConfig = firebaseConfig;
+    window.isFirebaseConfigured = Boolean(firebaseConfig.apiKey && !firebaseConfig.apiKey.includes("REPLACE"));
+
     let firebaseTimedOut = false;
 
     async function initFirebase() {
       // Config soxta bo'lsa darhol demo rejimga o'tish (tarmoqqa ulanishni kutmaslik)
-      if (!firebaseConfig.apiKey || firebaseConfig.apiKey.includes("REPLACE")) {
+      if (!window.isFirebaseConfigured) {
         console.log("ℹ️ Demo rejim (Firebase kaliti kiritilmagan)");
         window.useDemo = true;
         window.firebaseReady = true;
@@ -100,7 +103,8 @@
             deleteDoc: firestore.deleteDoc,
             onSnapshot: firestore.onSnapshot,
             serverTimestamp: firestore.serverTimestamp,
-            writeBatch: firestore.writeBatch
+            writeBatch: firestore.writeBatch,
+            increment: firestore.increment
           };
           window.useDemo = false;
           console.log("[Firebase] Firebase ulandi!");
@@ -117,7 +121,7 @@
       } catch (e) {
         console.warn("[Firebase] Firebase CDN yoki tarmoq xatosi, demo rejimga o'tildi:", e);
         window.useDemo = true;
-        const msg = "Firebase ulanmadi, lokal rejim";
+        const msg = window.isFirebaseConfigured ? "Lokal rejim: ma'lumot serverga yuborilmaydi" : "Firebase ulanmadi, demo rejim";
         if (typeof showToast === 'function') {
           showToast(msg);
         } else {
@@ -230,6 +234,7 @@
         </div>
       </div>
       <div class="nav-right">
+        <div id="localModeBadge" class="network-badge offline" style="display:none;font-size:0.75rem;padding:4px 8px;" title="Lokal rejim">Lokal rejim: ma'lumot serverga yuborilmaydi</div>
         <div id="networkStatusBadge" class="network-badge online" title="Internet holati">● Onlayn</div>
         <div id="outboxStatusBadge" class="outbox-badge hidden" title="Yuborilmagan so'rovlar navbati">Navbatda: 0</div>
         <div id="demoTag" class="demo-tag hidden">DEMO</div>

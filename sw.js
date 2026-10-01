@@ -14,7 +14,10 @@ const LOCAL_ASSETS = [
 ];
 const CDN_ASSETS = [
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js',
-  'https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js'
+  'https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js',
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js',
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js',
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
 ];
 
 self.addEventListener('install', (e) => {
@@ -53,9 +56,28 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
 
-  // Tashqi so'rovlarga (Firebase, OpenFoodFacts va b.) xalaqit bermaslik
-  if (url.origin !== self.location.origin &&
-      !CDN_ASSETS.some(u => e.request.url.startsWith(u.split('/').slice(0, 3).join('/')))) {
+  const isFirebaseSDK = url.origin === 'https://www.gstatic.com' && url.pathname.startsWith('/firebasejs/10.12.0/');
+  const isCdn = CDN_ASSETS.some(u => e.request.url.startsWith(u.split('/').slice(0, 3).join('/')));
+
+  // Tashqi so'rovlarga (Firebase DB, OpenFoodFacts va b.) xalaqit bermaslik
+  if (url.origin !== self.location.origin && !isCdn && !isFirebaseSDK) {
+    return;
+  }
+
+  // Firebase SDK uchun Cache-First (offline ishlashi uchun)
+  if (isFirebaseSDK) {
+    e.respondWith(
+      caches.match(e.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(e.request).then((res) => {
+          if (res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          }
+          return res;
+        });
+      })
+    );
     return;
   }
 
