@@ -227,14 +227,14 @@
   <div id="app" class="app hidden">
 
     <header class="top-nav">
-      <div class="nav-left">
+      <div class="nav-left" style="flex:1;min-width:0;overflow:hidden;">
         <div class="brand-logo" onclick="showPage('scanner')" style="cursor:pointer;" title="Bosh sahifa">
           <img src="logo.svg" alt="ScanPOS Logo" width="28" height="28" style="border-radius:8px;display:block;" onerror="this.src='logo.png'" />
           <span>ScanPOS</span>
         </div>
       </div>
       <div class="nav-right">
-        <div id="localModeBadge" class="network-badge offline" style="display:none;font-size:0.75rem;padding:4px 8px;" title="Lokal rejim">Lokal rejim: ma'lumot serverga yuborilmaydi</div>
+        <div id="localModeBadge" class="network-badge offline" style="display:none;" title="Lokal rejim">Lokal</div>
         <div id="networkStatusBadge" class="network-badge online" title="Internet holati">● Onlayn</div>
         <div id="outboxStatusBadge" class="outbox-badge hidden" title="Yuborilmagan so'rovlar navbati">Navbatda: 0</div>
         <div id="demoTag" class="demo-tag hidden">DEMO</div>
@@ -245,6 +245,7 @@
             <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
           </svg>
         </button>
+        <button id="langToggleBtn" class="nav-btn nav-btn-lang" onclick="toggleLanguage()" title="Tilni almashtirish (UZ / RU)" style="font-weight:700;font-size:0.75rem;padding:0 8px;letter-spacing:0.5px;">UZ</button>
         <button class="nav-btn" onclick="showPage('settings')" title="Sozlamalar">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
@@ -356,9 +357,21 @@
 
         <div class="cart-section">
           <div class="cart-header">
-            <h2>Savat <span class="cart-count" id="cartCount">0</span></h2>
-            <button class="clear-cart-btn" id="clearCartBtn" onclick="clearCart()"
-              style="display:none;">Tozalash</button>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <h2>Savat <span class="cart-count" id="cartCount">0</span></h2>
+              <button type="button" class="btn-hold-badge" id="heldCartsBtn" onclick="openHeldCartsModal()" style="display:none;" title="Kutishdagi savatlar">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+                  <rect x="6" y="4" width="4" height="16"></rect>
+                  <rect x="14" y="4" width="4" height="16"></rect>
+                </svg>
+                Kutishda: <span id="heldCartsCount">0</span>
+              </button>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="hold-cart-btn" id="holdCartBtn" onclick="holdCurrentCart()" style="display:none;" title="Savatni to'xtatib turish">To'xtatish</button>
+              <button class="clear-cart-btn" id="clearCartBtn" onclick="clearCart()"
+                style="display:none;">Tozalash</button>
+            </div>
           </div>
           <div class="empty-cart" id="emptyCart">
             <div class="empty-cart-icon">
@@ -398,12 +411,46 @@
       <div id="page-products" class="page">
         <div class="page-header">
           <h2>Mahsulotlar</h2>
-          <button class="btn-icon" onclick="showAddProductModal()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button class="btn-secondary btn-sm" onclick="openSupplyModal()" title="Tovar kirimi (Qabul qilish)" style="display:inline-flex;align-items:center;gap:4px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Kirim
+            </button>
+            <button class="btn-secondary btn-sm" onclick="openAuditModal()" title="Ombor sanog'i (Reviziya)" style="display:inline-flex;align-items:center;gap:4px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+                <line x1="18" y1="20" x2="18" y2="10"/>
+                <line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+              Reviziya
+            </button>
+            <button class="btn-secondary btn-sm" onclick="openImportCSVModal()" title="Excel / CSV import" style="display:inline-flex;align-items:center;gap:4px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <polyline points="9 15 12 12 15 15"/>
+              </svg>
+              Import
+            </button>
+            <button class="btn-secondary btn-sm" onclick="openBulkPriceModal()" title="Narxlarni ommaviy o'zgartirish" style="display:inline-flex;align-items:center;gap:4px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                <polyline points="17 6 23 6 23 12"/>
+              </svg>
+              Narxlar
+            </button>
+            <button class="btn-icon" onclick="showAddProductModal()" title="Yangi tovar">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="search-bar">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -425,6 +472,10 @@
           <div class="stat-card" id="lowStockCard" onclick="toggleLowStockFilter()" style="cursor:pointer;" title="Kam qolgan tovarlar">
             <div class="stat-num" id="lowStockCount" style="color:var(--danger)">0</div>
             <div class="stat-label">Tugayotgan</div>
+          </div>
+          <div class="stat-card" id="expiringStockCard" onclick="toggleExpiringFilter()" style="cursor:pointer;" title="Muddati 7 kun ichida tugaydigan yoki o'tgan tovarlar">
+            <div class="stat-num" id="expiringStockCount" style="color:#f59e0b;">0</div>
+            <div class="stat-label">Muddati &le;7 kun</div>
           </div>
         </div>
         <div class="product-grid" id="productGrid">
@@ -488,9 +539,18 @@
       <div id="page-analytics" class="page analytics-page">
         <div class="page-header">
           <h2>Hisobot & Tahlil</h2>
-          <div class="analytics-period-tabs">
-            <button class="period-tab active" id="ptab-week" onclick="switchAnalyticsPeriod('week')">7 kun</button>
-            <button class="period-tab" id="ptab-month" onclick="switchAnalyticsPeriod('month')">30 kun</button>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn-secondary btn-sm" onclick="openExpensesModal()" title="Do'kon xarajatlari (Ijara, maosh, svet...)" style="display:inline-flex;align-items:center;gap:4px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+                <line x1="12" y1="1" x2="12" y2="23"/>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 0 0 7H6"/>
+              </svg>
+              Xarajatlar
+            </button>
+            <div class="analytics-period-tabs">
+              <button class="period-tab active" id="ptab-week" onclick="switchAnalyticsPeriod('week')">7 kun</button>
+              <button class="period-tab" id="ptab-month" onclick="switchAnalyticsPeriod('month')">30 kun</button>
+            </div>
           </div>
         </div>
 
@@ -528,8 +588,23 @@
             <div class="an-stat-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>
             <div class="an-stat-info">
               <div class="an-stat-val" id="anTotalProfit">0 so'm</div>
-              <div class="an-stat-label">Sof foyda</div>
+              <div class="an-stat-label">Yalpi foyda (Tovar)</div>
               <div id="anProfitNote" style="font-size:0.65rem;color:rgba(255,255,255,0.7);margin-top:2px;"></div>
+            </div>
+          </div>
+          <div class="an-stat-card" style="background:linear-gradient(135deg,#d97706,#b45309);">
+            <div class="an-stat-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 0 0 7H6"/></svg></div>
+            <div class="an-stat-info">
+              <div class="an-stat-val" id="anTotalExpenses">0 so'm</div>
+              <div class="an-stat-label">Do'kon xarajatlari</div>
+            </div>
+          </div>
+          <div class="an-stat-card" id="anNetRealProfitCard" style="background:linear-gradient(135deg,#0284c7,#0369a1);">
+            <div class="an-stat-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div>
+            <div class="an-stat-info">
+              <div class="an-stat-val" id="anNetRealProfit">0 so'm</div>
+              <div class="an-stat-label">Haqiqiy sof foyda</div>
+              <div id="anNetProfitNote" style="font-size:0.65rem;color:rgba(255,255,255,0.8);margin-top:2px;">Sotuv - Tannarx - Xarajat</div>
             </div>
           </div>
           <div class="an-stat-card" style="background:linear-gradient(135deg,#dc2626,#f43f5e);">
@@ -591,6 +666,19 @@
           <h2>Sozlamalar</h2>
         </div>
         <div class="settings-section">
+          <h3 class="settings-group-title">Til / Язык</h3>
+          <div class="settings-group">
+            <div class="settings-item toggle-item" style="padding: 10px 14px;">
+              <div>
+                <label style="display:block;margin-bottom:2px;">Ilova tili / Язык приложения</label>
+                <span style="font-size:0.75rem;color:var(--text3);">O'zbekcha yoki Ruscha</span>
+              </div>
+              <select id="settingsLangSelect" onchange="changeLanguage(this.value)" class="form-input" style="width:auto;padding:6px 12px;font-weight:600;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:8px;">
+                <option value="uz">🇺🇿 O'zbekcha</option>
+                <option value="ru">🇷🇺 Русский</option>
+              </select>
+            </div>
+          </div>
           <h3 class="settings-group-title">Do'kon ma'lumotlari</h3>
           <div class="settings-group">
             <div class="settings-item"><label>Do'kon nomi</label><input type="text" id="shopName"
@@ -966,6 +1054,7 @@
           <div class="barcode-input-row">
             <input type="text" id="productBarcode" placeholder="8600001234567" inputmode="numeric" />
             <button class="scan-barcode-btn" type="button" onclick="scanForModal()">Skaner</button>
+            <button class="btn-secondary btn-sm" type="button" onclick="generateAndSetBarcode()" title="Kodsiz tovar uchun yangi shtrix-kod yaratish" style="white-space:nowrap;padding:0 8px;font-size:0.75rem;">🎲 Kod</button>
           </div>
         </div>
 
@@ -1003,14 +1092,28 @@
         <div class="form-row">
           <div class="form-group">
             <label>Ombordagi miqdor</label>
-            <input type="number" id="productStock" placeholder="Ixtiyoriy" min="0" />
+            <input type="number" step="any" id="productStock" placeholder="Ixtiyoriy" min="0" />
           </div>
-          <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:10px;">
-            <label class="sync-checkbox-label" style="font-size:0.85rem;cursor:pointer;display:flex;align-items:center;gap:6px;">
-              <input type="checkbox" id="productTrackStock" />
-              <span>Qoldiqni hisobga olish</span>
-            </label>
+          <div class="form-group">
+            <label>O'lchov birligi</label>
+            <select id="productUnit">
+              <option value="dona">Dona (dona)</option>
+              <option value="kg">Kilogramm (kg)</option>
+              <option value="g">Gramm (g)</option>
+              <option value="l">Litr (l)</option>
+              <option value="m">Metr (m)</option>
+            </select>
           </div>
+        </div>
+        <div class="form-group" style="padding-bottom:10px;">
+          <label class="sync-checkbox-label" style="font-size:0.85rem;cursor:pointer;display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="productTrackStock" />
+            <span>Qoldiqni hisobga olish</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label for="productExpiryDate">Yaroqlilik muddati (Sana)</label>
+          <input type="date" id="productExpiryDate" />
         </div>
         <div class="form-group">
           <label>Toifa (Kategoriya)</label>
@@ -1037,9 +1140,19 @@
           </label>
         </div>
 
+        <!-- Narx tarixi (Tahrirlashda ko'rinadi) -->
+        <div class="form-group" id="productPriceHistoryGroup" style="display:none;margin-top:12px;">
+          <label style="display:flex;justify-content:space-between;align-items:center;">
+            <span>Narxlar tarixi</span>
+            <span style="font-size:0.75rem;color:var(--text3);" id="priceHistoryCount">0 ta</span>
+          </label>
+          <div id="productPriceHistoryList" class="price-history-list"></div>
+        </div>
+
         <input type="hidden" id="editProductId" />
       </div>
       <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="btnProductPrintLabel" onclick="printCurrentModalProductLabel()" style="display:none;margin-right:auto;" title="Shtrix-kod va narx yorlig'ini chop etish">🏷️ Yorliq</button>
         <button class="btn-secondary" onclick="closeModal('addProductModal')">Bekor qilish</button>
         <button class="btn-primary" onclick="saveProduct()">Saqlash</button>
       </div>
@@ -1199,6 +1312,240 @@
     </div>
   </div>
 
+  <!-- Tovar kirimi modali (Supply / Stock In) -->
+  <div class="modal-overlay" id="supplyModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3 style="display:inline-flex;align-items:center;gap:6px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Tovar kirimi (Qabul qilish)
+        </h3>
+        <button class="modal-close" onclick="closeModal('supplyModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="position:relative;">
+          <label>Tovarni tanlang yoki skanerlang *</label>
+          <div class="barcode-input-row">
+            <input type="text" id="supplyBarcode" placeholder="Shtrix-kod yoki tovar nomi..." oninput="onSupplySearch(this.value)" autocomplete="off" />
+            <button class="scan-barcode-btn" type="button" onclick="scanForSupply()">Skaner</button>
+          </div>
+          <div id="supplySearchResults" class="supply-search-dropdown" style="display:none;max-height:160px;overflow-y:auto;background:var(--bg3);border:1px solid var(--border);border-radius:8px;position:absolute;width:100%;z-index:20;margin-top:2px;"></div>
+        </div>
+
+        <div id="supplyProductCard" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px;">
+          <div style="font-weight:700;font-size:1rem;color:var(--text);" id="spCardName"></div>
+          <div style="font-size:0.8rem;color:var(--text3);margin-top:2px;" id="spCardBarcode"></div>
+          <div style="display:flex;gap:12px;margin-top:8px;font-size:0.85rem;flex-wrap:wrap;">
+            <div>Joriy qoldiq: <strong id="spCardStock" style="color:var(--cyan)">0</strong></div>
+            <div>Joriy kelish: <strong id="spCardCost" style="color:var(--yellow)">0 so'm</strong></div>
+            <div>Sotish: <strong id="spCardPrice" style="color:var(--green)">0 so'm</strong></div>
+          </div>
+        </div>
+
+        <input type="hidden" id="supplySelectedProductId" value="" />
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Kirim miqdori *</label>
+            <input type="number" step="any" min="0.001" id="supplyQty" placeholder="Masalan: 10 yoki 1.5" />
+          </div>
+          <div class="form-group">
+            <label>Kelish narxi (tannarx, so'm) *</label>
+            <input type="number" id="supplyCostPrice" placeholder="Dona/kg narxi" min="0" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Yangi sotish narxi (ixtiyoriy, so'm)</label>
+          <input type="number" id="supplySalePrice" placeholder="O'zgartirmaslik uchun bo'sh qoldiring" min="0" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('supplyModal')">Bekor qilish</button>
+        <button type="button" class="btn-success" onclick="submitSupply()" style="display:inline-flex;align-items:center;gap:6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Kirimni tasdiqlash
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Excel / CSV Import Modali -->
+  <div class="modal-overlay" id="importCSVModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3 style="display:inline-flex;align-items:center;gap:6px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="12" y1="18" x2="12" y2="12"/>
+            <polyline points="9 15 12 12 15 15"/>
+          </svg>
+          Tovarlarni Excel/CSV dan import qilish
+        </h3>
+        <button class="modal-close" onclick="closeModal('importCSVModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div style="background:var(--bg3);border-radius:12px;padding:12px;margin-bottom:14px;font-size:0.85rem;line-height:1.4;color:var(--text2);">
+          Excel faylingizni <strong>CSV (bo'luvchi vergul yoki nuqta-vergul)</strong> formatida saqlab yuklang. Ustunlar: <em>Nomi, Shtrixkod, Sotish narxi, Kelish narxi, Qoldiq, Birlik</em>.
+          <div style="margin-top:8px;">
+            <button type="button" class="btn-secondary btn-xs" onclick="downloadCSVTemplate()" style="font-size:0.75rem;padding:4px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Namuna CSV shablonini yuklab olish
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>CSV faylni tanlang</label>
+          <input type="file" id="csvFileInput" accept=".csv, .txt" onchange="handleCSVFileSelect(event)" style="padding:8px;background:var(--bg3);border:1px dashed var(--border);border-radius:8px;width:100%;cursor:pointer;" />
+        </div>
+
+        <div class="form-group" style="margin-top:10px;">
+          <label>Yoki CSV matnini shu yerga qo'ying:</label>
+          <textarea id="csvTextInput" rows="5" placeholder="Nomi,Shtrixkod,Sotish narxi,Kelish narxi,Qoldiq,Birlik&#10;Coca-Cola 1.5L,4780001234567,14000,11000,24,dona&#10;Mol go'shti,200000000001,95000,80000,18.5,kg" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:monospace;font-size:0.8rem;resize:vertical;" oninput="parseCSVFromText(this.value)"></textarea>
+        </div>
+
+        <div id="csvPreviewArea" style="display:none;margin-top:10px;background:var(--bg2);border-radius:8px;padding:10px;font-size:0.85rem;">
+          <div id="csvSummaryText" style="font-weight:600;color:var(--cyan);margin-bottom:6px;"></div>
+          <div id="csvPreviewList" style="max-height:120px;overflow-y:auto;font-size:0.75rem;color:var(--text2);"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('importCSVModal')">Bekor qilish</button>
+        <button type="button" class="btn-primary" id="btnExecuteCSVImport" onclick="executeCSVImport()" disabled style="display:inline-flex;align-items:center;gap:6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Import qilish
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kutishdagi savatlar modali (Held Carts) -->
+  <div class="modal-overlay" id="heldCartsModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3 style="display:inline-flex;align-items:center;gap:6px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+            <rect x="6" y="4" width="4" height="16"></rect>
+            <rect x="14" y="4" width="4" height="16"></rect>
+          </svg>
+          Kutishdagi savatlar
+        </h3>
+        <button class="modal-close" onclick="closeModal('heldCartsModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div id="heldCartsList" style="display:flex;flex-direction:column;gap:10px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('heldCartsModal')">Yopish</button>
+        <button type="button" class="btn-danger btn-sm" onclick="clearAllHeldCarts()">Barchasini tozalash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ombor sanog'i (Reviziya) modali -->
+  <div class="modal-overlay" id="auditModal">
+    <div class="modal" style="max-width:550px;">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3 style="display:inline-flex;align-items:center;gap:6px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          Ombor sanog'i (Reviziya)
+        </h3>
+        <button class="modal-close" onclick="closeModal('auditModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="position:relative;">
+          <label>Tovarni skanerlang yoki qidiring</label>
+          <div class="barcode-input-row">
+            <input type="text" id="auditBarcode" placeholder="Shtrix-kod yoki tovar nomi..." oninput="onAuditSearch(this.value)" autocomplete="off" />
+            <button class="scan-barcode-btn" type="button" onclick="scanForAudit()">Skaner</button>
+          </div>
+          <div id="auditSearchResults" class="supply-search-dropdown" style="display:none;max-height:160px;overflow-y:auto;background:var(--bg3);border:1px solid var(--border);border-radius:8px;position:absolute;width:100%;z-index:20;margin-top:2px;"></div>
+        </div>
+
+        <div id="auditActiveProductBox" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div style="font-weight:700;font-size:0.95rem;" id="auditActiveName"></div>
+              <div style="font-size:0.8rem;color:var(--text3);" id="auditActiveBarcode"></div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:0.8rem;color:var(--text3);">Tizimda:</div>
+              <div style="font-size:1.1rem;font-weight:800;color:var(--cyan);" id="auditActiveSysStock">0</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-end;margin-top:10px;">
+            <div style="flex:1;">
+              <label style="font-size:0.8rem;display:block;margin-bottom:4px;">Haqiqiy sanalgan miqdor *</label>
+              <input type="number" step="any" min="0" id="auditActualInput" placeholder="Faktik soni..." oninput="calcAuditItemDiff()" />
+            </div>
+            <button type="button" class="btn-primary" onclick="commitAuditActiveItem()" style="padding:10px 14px;border-radius:8px;">
+              + Sanoqqa
+            </button>
+          </div>
+          <div id="auditActiveDiffBadge" style="margin-top:8px;font-size:0.85rem;font-weight:600;"></div>
+        </div>
+
+        <!-- Sanalgan tovarlar ro'yxati -->
+        <div style="font-weight:700;font-size:0.85rem;color:var(--text2);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+          <span>Sanalgan tovarlar (<span id="auditCount">0</span> ta)</span>
+          <button type="button" class="btn-xs btn-secondary" onclick="clearCurrentAudit()" style="font-size:0.7rem;padding:2px 8px;border-radius:4px;">Tozalash</button>
+        </div>
+        <div id="auditItemsList" style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;background:var(--bg2);padding:8px;border-radius:10px;border:1px solid var(--border);"></div>
+
+        <!-- Sanoq yakuni / Statistika -->
+        <div class="audit-summary-box" style="margin-top:12px;background:var(--bg3);border-radius:12px;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div style="background:rgba(239,68,68,0.1);padding:8px;border-radius:8px;border:1px solid rgba(239,68,68,0.2);">
+            <div style="font-size:0.75rem;color:var(--red);">Kamomad (Yo'qotish):</div>
+            <div id="auditTotalLoss" style="font-size:1.05rem;font-weight:800;color:var(--red);margin-top:2px;">0 so'm</div>
+          </div>
+          <div style="background:rgba(34,197,94,0.1);padding:8px;border-radius:8px;border:1px solid rgba(34,197,94,0.2);">
+            <div style="font-size:0.75rem;color:var(--green);">Ortiqcha qoldiq:</div>
+            <div id="auditTotalGain" style="font-size:1.05rem;font-weight:800;color:var(--green);margin-top:2px;">0 so'm</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('auditModal')">Yopish</button>
+        <button type="button" class="btn-success" onclick="applyAuditResults()" style="display:inline-flex;align-items:center;gap:6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Sanoqni tasdiqlash va qoldiqlarni to'g'rilash
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Quick Item Modal (Tezkor kodsiz tovar qo'shish) -->
   <div class="modal-overlay" id="quickItemModal">
     <div class="modal">
@@ -1240,6 +1587,212 @@
       <div class="modal-footer">
         <button type="button" class="btn-secondary" onclick="closeModal('quickItemModal')">Bekor qilish</button>
         <button type="button" class="btn-primary" onclick="saveQuickItem()">Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Expenses Modal (Do'kon xarajatlari) -->
+  <div class="modal-overlay" id="expensesModal">
+    <div class="modal modal-lg">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3 style="display:inline-flex;align-items:center;gap:6px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="1" x2="12" y2="23"/>
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 0 0 7H6"/>
+          </svg>
+          Do'kon xarajatlari
+        </h3>
+        <button class="modal-close" onclick="closeModal('expensesModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <!-- Yangi xarajat qo'shish formasi -->
+        <div class="expense-form-card" style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px;">
+          <div style="font-weight:700;font-size:0.85rem;margin-bottom:8px;color:var(--accent);">+ Yangi xarajat kiritish</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Kategoriya</label>
+              <select id="expenseCategory">
+                <option value="ijara">Ijara haqi</option>
+                <option value="maosh">Ish haqi (Maosh)</option>
+                <option value="svet">Elektr / Svet / Kommunal</option>
+                <option value="transport">Yo'l haqi / Yetkazish</option>
+                <option value="boshqa">Boshqa xarajat</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Summasi (so'm) *</label>
+              <input type="number" id="expenseAmount" placeholder="100000" min="0" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Xarajat nomi / tavsifi *</label>
+              <input type="text" id="expenseTitle" placeholder="Masalan: Oktyabr oyi ijarasi" />
+            </div>
+            <div class="form-group">
+              <label>Sanasi</label>
+              <input type="date" id="expenseDate" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Izoh (ixtiyoriy)</label>
+            <input type="text" id="expenseNote" placeholder="Qo'shimcha izoh..." />
+          </div>
+          <button type="button" class="btn-primary btn-full" onclick="addExpenseFromModal()" style="margin-top:4px;">Xarajatni saqlash</button>
+        </div>
+
+        <!-- Xarajatlar ro'yxati -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div style="font-weight:700;font-size:0.9rem;">Oxirgi xarajatlar</div>
+          <div id="expenseListSummary" style="font-size:0.8rem;color:var(--text2);font-weight:600;">Jami: 0 so'm</div>
+        </div>
+        <div id="expensesList" class="expenses-list-container" style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+          <div class="empty-state" style="padding:16px;">
+            <p>Hozircha xarajat kiritilmagan</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('expensesModal')">Yopish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Price Modal (Narxlarni ommaviy o'zgartirish) -->
+  <div class="modal-overlay" id="bulkPriceModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3 style="display:inline-flex;align-items:center;gap:6px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+            <polyline points="17 6 23 6 23 12"/>
+          </svg>
+          Narxlarni ommaviy yangilash
+        </h3>
+        <button class="modal-close" onclick="closeModal('bulkPriceModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Qaysi tovarlar uchun?</label>
+          <select id="bulkPriceCategory" onchange="updateBulkPricePreview()">
+            <option value="all">Barcha mahsulotlar</option>
+            <option value="suv_05">Suv 0.5L</option>
+            <option value="suv_10">Suv 1L - 1.5L</option>
+            <option value="suv_50">Suv 5L</option>
+            <option value="ichimlik">Gazli ichimliklar &amp; sharbatlar</option>
+            <option value="non">Non va pishiriqlar</option>
+            <option value="shirinlik">Shirinliklar &amp; konfetlar</option>
+            <option value="sut">Sut mahsulotlari</option>
+            <option value="oziq">Oziq-ovqat mahsulotlari</option>
+            <option value="gigiyena">Gigiyena va kosmetika</option>
+            <option value="uy">Uy-ro'zg'or buyumlari</option>
+            <option value="boshqa">Boshqa mahsulotlar</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Qaysi narx?</label>
+            <select id="bulkPriceTarget" onchange="updateBulkPricePreview()">
+              <option value="price">Sotish narxi</option>
+              <option value="costPrice">Tannarx (Kelish narxi)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>O'zgartirish turi</label>
+            <select id="bulkPriceType" onchange="updateBulkPricePreview()">
+              <option value="percent">Foizda (%)</option>
+              <option value="fixed">Summada (so'm)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Qiymat (+ oshirish, - tushirish)</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="number" id="bulkPriceValue" placeholder="Masalan: 5 yoki 500" oninput="updateBulkPricePreview()" />
+            <span id="bulkPriceUnitBadge" style="font-weight:700;font-size:0.9rem;min-width:30px;">%</span>
+          </div>
+        </div>
+
+        <!-- Tezkor shablon tugmalar -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+          <button type="button" class="btn-secondary btn-sm" onclick="setBulkPreset(5, 'percent')">+5%</button>
+          <button type="button" class="btn-secondary btn-sm" onclick="setBulkPreset(10, 'percent')">+10%</button>
+          <button type="button" class="btn-secondary btn-sm" onclick="setBulkPreset(-5, 'percent')">-5%</button>
+          <button type="button" class="btn-secondary btn-sm" onclick="setBulkPreset(500, 'fixed')">+500 so'm</button>
+          <button type="button" class="btn-secondary btn-sm" onclick="setBulkPreset(1000, 'fixed')">+1 000 so'm</button>
+          <button type="button" class="btn-secondary btn-sm" onclick="setBulkPreset(-500, 'fixed')">-500 so'm</button>
+        </div>
+
+        <!-- Natija prevyusi -->
+        <div class="bulk-preview-card" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;">
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:4px;">
+            <span style="color:var(--text2);">Ta'sirlanuvchi tovarlar:</span>
+            <span id="bulkPreviewCount" style="font-weight:700;color:var(--text1);">0 ta</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;">
+            <span style="color:var(--text2);">Misol uchun natija:</span>
+            <span id="bulkPreviewExample" style="font-weight:700;color:var(--green);">-</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('bulkPriceModal')">Bekor qilish</button>
+        <button type="button" class="btn-primary" onclick="applyBulkPriceUpdate()">Narxlarni yangilash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Print Label Modal (Shtrix-kod va narx yorlig'i) -->
+  <div class="modal-overlay" id="printLabelModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3 style="display:inline-flex;align-items:center;gap:6px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9"/>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+            <rect x="6" y="14" width="12" height="8"/>
+          </svg>
+          Narx va shtrix-kod yorlig'i
+        </h3>
+        <button class="modal-close" onclick="closeModal('printLabelModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;align-items:center;">
+        <!-- Chop etiluvchi yorliq kartasi -->
+        <div id="printableLabelCard" class="printable-label-card" style="background:#ffffff;color:#000000;border:2px dashed #333;border-radius:8px;padding:12px 16px;width:100%;max-width:300px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+          <div id="labelShopName" style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;font-weight:700;color:#555;margin-bottom:4px;">ScanPOS</div>
+          <div id="labelProductName" style="font-size:1.05rem;font-weight:800;color:#000;line-height:1.2;margin-bottom:6px;word-break:break-word;">Mahsulot nomi</div>
+          <div id="labelProductPrice" style="font-size:1.6rem;font-weight:900;color:#000;margin-bottom:8px;">0 so'm</div>
+          <div style="background:#fff;padding:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            <canvas id="barcodeCanvas" width="240" height="70" style="max-width:100%;"></canvas>
+            <div id="labelBarcodeText" style="font-family:monospace;font-size:0.85rem;letter-spacing:3px;font-weight:700;color:#000;margin-top:2px;"></div>
+          </div>
+          <div id="labelDateText" style="font-size:0.65rem;color:#777;margin-top:4px;"></div>
+        </div>
+
+        <div style="margin-top:14px;width:100%;display:flex;flex-direction:column;gap:8px;">
+          <label style="font-size:0.8rem;color:var(--text3);text-align:center;">Standart 58mm termal kassa printeri yoki stiker qog'oz uchun moslashtirilgan</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('printLabelModal')">Yopish</button>
+        <button type="button" class="btn-primary" onclick="printBarcodeLabel()" style="display:inline-flex;align-items:center;gap:6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9"/>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+            <rect x="6" y="14" width="12" height="8"/>
+          </svg>
+          Chop etish (Print)
+        </button>
       </div>
     </div>
   </div>

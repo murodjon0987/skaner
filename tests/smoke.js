@@ -60,6 +60,16 @@ async function runTests() {
   window.URL.createObjectURL = () => 'blob:mock-url';
   window.URL.revokeObjectURL = () => {};
 
+  if (window.HTMLCanvasElement) {
+    window.HTMLCanvasElement.prototype.getContext = () => ({
+      fillRect: () => {},
+      clearRect: () => {},
+      getImageData: () => ({ data: [] }),
+      putImageData: () => {},
+      fillStyle: ''
+    });
+  }
+
   window.confirm = () => false;
   window.alert = () => {};
 
@@ -562,10 +572,354 @@ async function runTests() {
   assert(refundBatchEntry && Array.isArray(refundBatchEntry.products) && refundBatchEntry.products.length > 0, 'refundBatch ichida qaytarilgan tovarlar ro\'yxati mavjud');
   assert(refundProduct.stock === 6, 'Lokal omborda tovar qoldig\'i 5 dan 6 ga yangilandi');
 
+
+  // ─────────────────────────────────────────────
+  // TEST 18: Tovarni kg/gramm (0.5 kg, 1.25 kg) bilan sotish va ombor hisobi
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 18: Tovarni kg/gramm (0.5 kg, 1.25 kg) bilan sotish');
+  const pMeat = {
+    id: 'prod-meat-kg',
+    barcode: '8888888888888',
+    name: "Mol go'shti",
+    price: 80000,
+    costPrice: 65000,
+    stock: 10,
+    unit: 'kg',
+    trackStock: true,
+    category: 'oziq'
+  };
+  await window.saveProductToDB(pMeat);
+
+  // 1.25 kg qo'shish
+  window.addToCart(pMeat, 1.25);
+  assert(window.APP.cart.length === 1 && window.APP.cart[0].qty === 1.25, 'Savatga 1.25 kg go\'sht qo\'shildi');
+  assert(window.APP.cart[0].unit === 'kg', 'Savat item birligi "kg" ekani saqlandi');
+
+  const { total: meatTotal } = window.calcTotals(window.APP.cart, 0, 0);
+  assert(meatTotal === 100000, '1.25 kg x 80 000 = 100 000 so\'m to\'g\'ri hisoblandi');
+
+  // Savatda miqdorni 0.5 kg ga o'zgartirish (setCartQty)
+  window.setCartQty(pMeat.id, 0.5);
+  assert(window.APP.cart[0].qty === 0.5, 'setCartQty orqali miqdor 0.5 kg ga o\'rnatildi');
+
+  // Yana 0.75 kg qo'shish -> 1.25 kg bo'ladi
+  window.addToCart(pMeat, 0.75);
+  assert(window.APP.cart[0].qty === 1.25, '0.5 + 0.75 = 1.25 kg to\'g\'ri yig\'ildi');
+
+  // Sotuvni amalga oshirish
+  window.APP.selectedPayment = 'cash';
+  const cashInput18 = document.getElementById('cashGiven');
+  if (cashInput18) cashInput18.value = '100000';
+  await window.completeSale();
+
+  assert(pMeat.stock === 8.75, 'Ombordagi qoldiq 10 dan 1.25 kamayib, 8.75 kg bo\'ldi');
+  const latestBill18 = window.APP.bills[0];
+  assert(latestBill18 && latestBill18.items[0].qty === 1.25 && latestBill18.items[0].unit === 'kg', 'Chekda 1.25 kg tovar va kg birligi qayd etildi');
+
+  // ─────────────────────────────────────────────
+  // TEST 19: Tovar kirimi (Supply / Stock In)
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 19: Tovar kirimi (Supply / Stock In)');
+  window.openSupplyModal(pMeat.id);
+
+  const selProdInput = document.getElementById('supplySelectedProductId');
+  if (selProdInput) selProdInput.value = pMeat.id;
+  const supplyQtyInput = document.getElementById('supplyQty');
+  if (supplyQtyInput) supplyQtyInput.value = '5.25';
+  const supplyCostInput = document.getElementById('supplyCostPrice');
+  if (supplyCostInput) supplyCostInput.value = '70000';
+  const supplyPriceInput = document.getElementById('supplySalePrice');
+  if (supplyPriceInput) supplyPriceInput.value = '85000';
+
+  await window.submitSupply();
+
+  assert(pMeat.stock === 14, 'Kirimdan keyin ombor qoldig\'i 8.75 + 5.25 = 14 kg bo\'ldi');
+  assert(pMeat.costPrice === 70000, 'Yangi kelish narxi (tannarx) 70 000 so\'mga yangilandi');
+  assert(pMeat.price === 85000, 'Yangi sotish narxi 85 000 so\'mga yangilandi');
+  assert(Array.isArray(window.APP.supplies) && window.APP.supplies.length > 0, 'Kirimlar jurnalida yozuv saqlandi');
+
+  // ─────────────────────────────────────────────
+  // TEST 20: Tovarlarni Excel/CSV dan import qilish
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 20: Tovarlarni Excel/CSV dan import qilish');
+  const sampleCSV = [
+    'Nomi,Shtrixkod,Sotish narxi,Kelish narxi,Qoldiq,Birlik,Toifa',
+    "Mol go'shti,8888888888888,90000,72000,25,kg,oziq",
+    'Pomidor Yangi,2001112223334,18000,12000,45.5,kg,oziq',
+    'Fanta 0.5L,4780009998881,7000,5000,60,dona,ichimlik'
+  ].join('\n');
+
+  const parsedCSV = window.parseCSV(sampleCSV);
+  assert(parsedCSV.length === 3, 'CSV matnidan 3 ta tovar muvaffaqiyatli aniqlandi');
+  assert(parsedCSV[1].name === 'Pomidor Yangi' && parsedCSV[1].stock === 45.5 && parsedCSV[1].unit === 'kg', 'Kasr qoldiq va kg birligi to\'g\'ri o\'qildi');
+
+  window.parseCSVFromText(sampleCSV);
+  await window.executeCSVImport();
+
+  const importedMeat = window.APP.products.find(p => p.barcode === '8888888888888');
+  assert(importedMeat && importedMeat.price === 90000 && importedMeat.stock === 25, 'Mavjud tovar narxi (90 000) va qoldig\'i (25) yangilandi');
+
+  const newTomato = window.APP.products.find(p => p.barcode === '2001112223334');
+  assert(newTomato && newTomato.name === 'Pomidor Yangi' && newTomato.stock === 45.5, 'Yangi mahsulot Pomidor Yangi (45.5 kg) bazaga qo\'shildi');
+
+  // ─────────────────────────────────────────────
+  // TEST 21: Savatni to'xtatib turish (Hold cart) va tiklash
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 21: Savatni to\'xtatib turish (Hold cart) va tiklash');
+  window.APP.cart = [];
+  window.addToCart(newTomato, 2.5); // 2.5 kg pomidor
+  assert(window.APP.cart.length === 1, 'Hozirgi savatda 1 ta tovar (2.5 kg)');
+
+  await window.holdCurrentCart();
+  assert(window.APP.cart.length === 0, 'Savat kutishga olingach, kassa savati bo\'shatildi');
+  assert(window.APP.heldCarts.length === 1, 'Kutishdagi savatlar ro\'yxatida 1 ta savat saqlandi');
+  assert(window.APP.heldCarts[0].items[0].qty === 2.5, 'Kutishdagi savatda 2.5 kg tovar mavjud');
+
+  // Boshqa mijozga 1 ta tovar sotish
+  window.addToCart(importedMeat, 1);
+  assert(window.APP.cart.length === 1 && window.APP.cart[0].id === importedMeat.id, 'Navbatdagi mijoz uchun yangi tovar savatga olindi');
+  window.APP.cart = []; // Yangi mijoz xizmat qilib bo'lindi
+
+  // Kutishdagi savatni qayta tiklash
+  const heldId = window.APP.heldCarts[0].id;
+  await window.restoreHeldCart(heldId);
+  assert(window.APP.cart.length === 1 && window.APP.cart[0].id === newTomato.id, 'Kutishdagi savat muvaffaqiyatli tiklandi');
+  assert(window.APP.heldCarts.length === 0, 'Tiklangandan so\'ng kutish ro\'yxatidan o\'chirildi');
+  window.APP.cart = [];
+
+  // ─────────────────────────────────────────────
+  // TEST 22: Ombor sanog'i (Reviziya / Inventarizatsiya)
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 22: Ombor sanog\'i (Reviziya / Inventarizatsiya)');
+  // Pomidor qoldig'i tizimda 45.5 kg. Haqiqiy sanalganda 40 kg chiqdi (kamomad -5.5 kg).
+  window.selectAuditProduct(newTomato);
+  const actualAuditInput = document.getElementById('auditActualInput');
+  if (actualAuditInput) actualAuditInput.value = '40';
+  window.calcAuditItemDiff();
+  window.commitAuditActiveItem();
+
+  assert(window.APP.auditItems.length === 1, 'Sanoq ro\'yxatiga tovar qo\'shildi');
+  assert(window.APP.auditItems[0].diff === -5.5, 'Kamomad -5.5 kg to\'g\'ri hisoblandi');
+  assert(window.APP.auditItems[0].lossAmount === 5.5 * 12000, 'Yo\'qotish summasi (66 000 so\'m) aniqlandi');
+
+  // Sanoqni tasdiqlash
+  window.confirm = () => true; // tasdiqlash
+  await window.applyAuditResults();
+  window.confirm = () => false;
+
+  assert(newTomato.stock === 40, 'Ombordagi qoldiq haqiqiy faktik son 40 kg ga to\'g\'rilandi');
+  assert(window.APP.auditItems.length === 0, 'Sanoq yakunlangach ro\'yxat tozalandi');
+
   // Reset demo state
   window.useDemo = true;
   window.navigator.onLine = true;
   await window.ScanDB.set('scanpos_outbox', []);
+
+  // ─────────────────────────────────────────────
+  // TEST 23: Yaroqlilik muddati (Expiry Date)
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 23: Yaroqlilik muddati (Expiry Date)');
+  const expOld = window.getExpiryStatus('2020-01-01');
+  assert(expOld.status === 'expired', 'O\'tgan sana expired sifatida aniqlandi');
+  assert(expOld.days < 0, 'O\'tgan kunda days manfiy bo\'ldi');
+  assert(expOld.label.includes('Muddati o\'tgan'), 'Label da "Muddati o\'tgan" yozuvi bor');
+
+  const in3Days = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  const expWarn = window.getExpiryStatus(in3Days);
+  assert(expWarn.status === 'expiring', '3 kunda tugaydigan tovar expiring holatida');
+  assert(expWarn.label.includes('kunda tugaydi'), 'Label da "kunda tugaydi" yozuvi bor');
+
+  const in40Days = new Date(Date.now() + 40 * 86400000).toISOString().slice(0, 10);
+  const expOk = window.getExpiryStatus(in40Days);
+  assert(expOk.status === 'ok', '40 kunda tugaydigan tovar ok holatida');
+
+  // Tovarni bazaga qo'shish va getExpiringProducts(7) bilan tekshirish
+  const expiredProd = {
+    id: 'prod-expired-test',
+    barcode: '88880001',
+    name: 'Sut Muddati O\'tgan',
+    price: 9000,
+    costPrice: 7000,
+    stock: 5,
+    trackStock: true,
+    category: 'ichimliklar',
+    expiryDate: '2020-01-01'
+  };
+  const expiringProd = {
+    id: 'prod-expiring-test',
+    barcode: '88880002',
+    name: 'Qatiq Muddati Tugayotgan',
+    price: 8000,
+    costPrice: 6000,
+    stock: 8,
+    trackStock: true,
+    category: 'ichimliklar',
+    expiryDate: in3Days
+  };
+  window.APP.products.push(expiredProd, expiringProd);
+
+  const expiringList = window.getExpiringProducts(7);
+  assert(expiringList.some(p => p.id === expiredProd.id), 'Muddati o\'tgan tovar 7 kunlik ro\'yxatda chiqdi');
+  assert(expiringList.some(p => p.id === expiringProd.id), 'Muddati 3 kunda tugaydigan tovar 7 kunlik ro\'yxatda chiqdi');
+
+  // Savatga muddati o'tgan tovar skanerlanganda ogohlantirish
+  window.APP.currentPage = 'scanner';
+  window.APP.cart = [];
+  window.confirm = () => false; // Rad etish
+  window.addToCart(expiredProd);
+  assert(window.APP.cart.length === 0, 'Kassir rad etsa muddati o\'tgan tovar savatga qo\'shilmadi');
+
+  window.confirm = () => true; // Qasddan tasdiqlash
+  window.addToCart(expiredProd);
+  assert(window.APP.cart.length === 1, 'Kassir tasdiqlaganda ogohlantirish bilan savatga kiritildi');
+  window.APP.cart = [];
+
+  // ─────────────────────────────────────────────
+  // TEST 24: Xarajatlar va Haqiqiy Sof Foyda
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 24: Xarajatlar va Haqiqiy Sof Foyda');
+  window.APP.expenses = [];
+  const exp1 = await window.saveExpense({
+    title: 'Do\'kon ijarasi',
+    category: 'ijara',
+    amount: 1500000,
+    date: new Date().toISOString().slice(0, 10),
+    note: 'Oylik ijara'
+  });
+  const exp2 = await window.saveExpense({
+    title: 'Elektr energiyasi (Svet)',
+    category: 'svet',
+    amount: 300000,
+    date: new Date().toISOString().slice(0, 10)
+  });
+
+  assert(window.APP.expenses.length === 2, 'Ikkita xarajat muvaffaqiyatli saqlandi');
+  const expTotal = window.APP.expenses.reduce((s, e) => s + Number(e.amount), 0);
+  assert(expTotal === 1800000, 'Xarajatlar yig\'indisi 1 800 000 so\'m bo\'ldi');
+
+  // Analitika hisob-kitobini tekshirish
+  window.APP.currentPage = 'analytics';
+  window.renderAnalytics();
+  const totalExpEl = document.getElementById('anTotalExpenses');
+  assert(totalExpEl && (totalExpEl.textContent.includes('1.8 mln') || totalExpEl.textContent.includes('1 800 000')), 'Analitikada xarajatlar 1.8 mln so\'m ko\'rsatildi');
+
+  // Xarajatni o'chirish
+  await window.deleteExpense(exp2.id);
+  assert(window.APP.expenses.length === 1, 'Xarajat o\'chirildi');
+  assert(window.APP.expenses[0].id === exp1.id, 'Qolgan xarajat tekshirildi');
+
+  // ─────────────────────────────────────────────
+  // TEST 25: O'zbekcha / Ruscha Til tanlash
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 25: O\'zbekcha / Ruscha Til tanlash');
+  assert(typeof window.I18N === 'object', 'I18N lug\'ati mavjud');
+  assert(typeof window.I18N.uz === 'object' && typeof window.I18N.ru === 'object', 'UZ va RU lug\'atlari mavjud');
+
+  // Boshlang'ich uzbekcha
+  assert(window.t('btn_checkout') === 'To\'lov', 'Boshlang\'ich til o\'zbekcha (To\'lov)');
+
+  // Rus tiliga almashtirish
+  window.changeLanguage('ru');
+  assert(window.APP.settings.lang === 'ru', 'Til sozlamasi "ru" ga o\'zgardi');
+  assert(window.t('btn_checkout') === 'Оплата', 'Tarjima "Оплата" ga o\'zgardi');
+  assert(window.t('nav_products') === 'Товары', 'Menyu tarjimasi "Товары" bo\'ldi');
+
+  // Tilni almashtirish tugmasi (toggle)
+  window.toggleLanguage();
+  assert(window.APP.settings.lang === 'uz', 'Toggle orqali yana "uz" ga qaytdi');
+  assert(window.t('btn_checkout') === 'To\'lov', 'Qayta "To\'lov" bo\'ldi');
+
+  // ─────────────────────────────────────────────
+  // TEST 26: Narxlarni ommaviy o'zgartirish va narx tarixi
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 26: Narxlarni ommaviy o\'zgartirish va narx tarixi');
+  const bulkProd = {
+    id: 'prod-bulk-test',
+    barcode: '99990001',
+    name: 'Bulk Tovar Test',
+    price: 10000,
+    costPrice: 8000,
+    stock: 20,
+    trackStock: true,
+    category: 'ichimliklar',
+    priceHistory: []
+  };
+  window.APP.products.push(bulkProd);
+
+  // +10% ommaviy narx oshirish
+  const catInput = document.getElementById('bulkPriceCategory');
+  const targetInput = document.getElementById('bulkPriceTarget');
+  const typeInput = document.getElementById('bulkPriceType');
+  const valInput = document.getElementById('bulkPriceValue');
+  if (catInput) catInput.value = 'ichimliklar';
+  if (targetInput) targetInput.value = 'price';
+  if (typeInput) typeInput.value = 'percent';
+  if (valInput) valInput.value = '10';
+
+  window.confirm = () => true;
+  await window.applyBulkPriceUpdate();
+
+  assert(bulkProd.price === 11000, 'Narx +10% ga oshdi (10000 -> 11000)');
+  assert(Array.isArray(bulkProd.priceHistory) && bulkProd.priceHistory.length > 0, 'Narx tarixi jurnali yaratildi');
+  assert(bulkProd.priceHistory[0].oldPrice === 10000 && bulkProd.priceHistory[0].newPrice === 11000, 'Tarixda 10000 -> 11000 qayd etildi');
+
+  // +500 so'm qo'shish
+  if (typeInput) typeInput.value = 'fixed';
+  if (valInput) valInput.value = '500';
+  await window.applyBulkPriceUpdate();
+
+  assert(bulkProd.price === 11500, 'Narx +500 so\'mga oshdi (11000 -> 11500)');
+  assert(bulkProd.priceHistory[0].newPrice === 11500, 'Yangi narx tarixda qayd etildi');
+
+  // ─────────────────────────────────────────────
+  // TEST 27: Shtrix-kod yorlig'ini chop etish
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 27: Shtrix-kod yorlig\'ini chop etish');
+  const generatedBarcode = window.generateProductBarcode();
+  assert(typeof generatedBarcode === 'string', 'Shtrix-kod satr ko\'rinishida generatsiya qilindi');
+  assert(generatedBarcode.length === 13, 'Shtrix-kod uzunligi EAN-13 bo\'yicha 13 ta raqam');
+  assert(generatedBarcode.startsWith('20'), 'Shtrix-kod supermarket ichki prefiksi "20" bilan boshlanadi');
+
+  // EAN-13 nazorat raqami (checksum) tekshiruvi
+  let sumOdd = 0;
+  let sumEven = 0;
+  for (let i = 0; i < 12; i++) {
+    const digit = parseInt(generatedBarcode[i], 10);
+    if (i % 2 === 0) sumOdd += digit;
+    else sumEven += digit;
+  }
+  const calcCheck = (10 - ((sumOdd + 3 * sumEven) % 10)) % 10;
+  const actualCheck = parseInt(generatedBarcode[12], 10);
+  assert(calcCheck === actualCheck, 'EAN-13 nazorat raqami (checksum) 100% to\'g\'ri');
+
+  // Canvasga chizish funksiyasini tekshirish
+  const mockCanvas = {
+    width: 200,
+    height: 70,
+    getContext: () => ({
+      fillRect: () => {},
+      clearRect: () => {},
+      fillStyle: ''
+    })
+  };
+  let drawOk = false;
+  try {
+    window.drawBarcodeToCanvas(mockCanvas, generatedBarcode);
+    drawOk = true;
+  } catch (e) {
+    drawOk = false;
+  }
+  assert(drawOk, 'Shtrix-kod canvasga xatosiz chizildi');
+
+  // Yorliq oynasini ochish
+  let printLabelOpened = false;
+  try {
+    window.openPrintLabelModal(bulkProd.id);
+    printLabelOpened = true;
+  } catch (e) {
+    printLabelOpened = false;
+  }
+  assert(printLabelOpened, 'Mahsulot yorlig\'i oynasi muvaffaqiyatli ochildi');
 
   // ─────────────────────────────────────────────
   // XULOSA

@@ -38,6 +38,13 @@ const APP = {
  quickItems: [], // Tezkor kodsiz tovarlar ro‘yxati
  currentBillForPrint: null,
  _currentLinkTargetId: null,
+ heldCarts: [], // Kutishdagi savatlar
+ supplies: [], // Tovar kirimlari jurnali
+ auditItems: [], // Ombor sanog'i (reviziya) ro'yxati
+ activeAuditProduct: null,
+ activeSupplyProduct: null,
+ expenses: [], // Do'kon xarajatlari { id, title, category, amount, date, note }
+ _filterExpiringStock: false, // Muddati tugayotgan tovarlarni filtrlash holati
 };
 
 // ─────────────────────────────────────────────
@@ -174,6 +181,7 @@ function normalizeProduct(p) {
  p.isQuick = true;
  p.trackStock = false;
  }
+ if (!p.unit) p.unit = 'dona';
  return p;
 }
 
@@ -986,13 +994,50 @@ function handleBarcodeDetected(rawCode) {
  // ─── Modal uchun skaner rejimi ───
  // scanForModal() chaqirilganda navbatdagi skanlangan kodni modal ga yozamiz
  if (APP._scanForModal) {
- APP._scanForModal = false;
- const barcodeInput = document.getElementById('productBarcode');
- if (barcodeInput) barcodeInput.value = code;
- openModal('addProductModal');
- showToast(`Kod kiritildi: ${code}`);
- updateScanHint('Shtrix-kodni ramka ichiga oling', '');
- return;
+  APP._scanForModal = false;
+  const barcodeInput = document.getElementById('productBarcode');
+  if (barcodeInput) barcodeInput.value = code;
+  openModal('addProductModal');
+  showToast(`Kod kiritildi: ${code}`);
+  updateScanHint('Shtrix-kodni ramka ichiga oling', '');
+  return;
+ }
+
+ // ─── Tovar kirimi uchun skaner rejimi ───
+ if (APP._scanForSupply) {
+  APP._scanForSupply = false;
+  showPage('products');
+  const p = findProductByBarcode(code);
+  if (p) {
+   openSupplyModal(p.id);
+   showToast(`${p.name} kirim uchun tanlandi`);
+  } else {
+   openSupplyModal();
+   const bInput = document.getElementById('supplyBarcode');
+   if (bInput) bInput.value = code;
+   showToast(`Kod kiritildi: ${code}`);
+  }
+  updateScanHint('Shtrix-kodni ramka ichiga oling', '');
+  return;
+ }
+
+ // ─── Ombor sanog'i (reviziya) uchun skaner rejimi ───
+ if (APP._scanForAudit) {
+  APP._scanForAudit = false;
+  showPage('products');
+  const p = findProductByBarcode(code);
+  if (p) {
+   openAuditModal();
+   selectAuditProduct(p);
+   showToast(`${p.name} sanoq uchun tanlandi`);
+  } else {
+   openAuditModal();
+   const bInput = document.getElementById('auditBarcode');
+   if (bInput) bInput.value = code;
+   showToast(`Kod: ${code} bazada topilmadi`, 'warning');
+  }
+  updateScanHint('Shtrix-kodni ramka ichiga oling', '');
+  return;
  }
 
  // Mahsulotni qidirish
@@ -1302,21 +1347,36 @@ function deleteQuickItem(itemId) {
 // ─────────────────────────────────────────────
 // CART (SAVAT)
 // ─────────────────────────────────────────────
-function addToCart(product) {
- const shouldTrack = isTracked(product);
+function addToCart(product, qtyToAdd = 1) {
+  // Yaroqlilik muddati tekshiruvi (Expiry check)
+  if (product && product.expiryDate && typeof getExpiryStatus === 'function') {
+    const expInfo = getExpiryStatus(product.expiryDate);
+    if (expInfo.status === 'expired') {
+      if (typeof SOUNDS !== 'undefined') SOUNDS.error();
+      showToast(`DIQQAT! "${product.name}" muddati O'TGAN (${product.expiryDate})!`, 'error');
+      const doConfirm = (typeof window !== 'undefined' && typeof window.confirm === 'function') ? window.confirm : (typeof confirm === 'function' ? confirm : () => true);
+      const proceed = doConfirm(`DIQQAT! XAVF!\n"${product.name}" mahsulotining yaroqlilik muddati O'TGAN (${product.expiryDate})!\nMuddati o'tgan tovar sotish jarimaga sabab bo'ladi.\nBaribir savatga qo'shilsinmi?`);
+      if (!proceed) return false;
+    } else if (expInfo.status === 'today' || expInfo.status === 'expiring') {
+      showToast(`Diqqat: "${product.name}" muddati ${expInfo.label} (${product.expiryDate})!`, 'warning');
+    }
+  }
+
+  const shouldTrack = isTracked(product);
+ const addAmount = parseFloat(qtyToAdd) || 1;
 
  // Stock tekshiruvi (faqat trackStock=true bo'lganda)
  if (shouldTrack) {
  const existing = APP.cart.find(i => i.id === product.id);
- const cartQty = existing ? existing.qty : 0;
- const currentStock = Number(product.stock) || 0;
+ const cartQty = existing ? (parseFloat(existing.qty) || 0) : 0;
+ const currentStock = parseFloat(product.stock) || 0;
  if (currentStock <= 0) {
  if (typeof SOUNDS !== 'undefined') SOUNDS.error();
  showToast(`Diqqat: ${product.name} — omborda qolmagan!`, 'warning');
  return false;
  }
- if (cartQty + 1 > currentStock) {
- if (!confirm(`Diqqat: Omborda ${currentStock} ta mavjud. ${cartQty + 1} ta qo'shilsinmi?`)) return false;
+ if (cartQty + addAmount > currentStock) {
+ if (!confirm(`Diqqat: Omborda ${currentStock} ${product.unit || 'ta'} mavjud. ${Math.round((cartQty + addAmount) * 1000) / 1000} ${product.unit || 'ta'} qo'shilsinmi?`)) return false;
  }
  }
 
@@ -1325,8 +1385,8 @@ function addToCart(product) {
 
  const existing = APP.cart.find(i => i.id === product.id);
  if (existing) {
- existing.qty++;
- showToast(`${product.name} → ${existing.qty} ta`);
+ existing.qty = Math.round(((parseFloat(existing.qty) || 0) + addAmount) * 1000) / 1000;
+ showToast(`${product.name} → ${existing.qty} ${product.unit || 'ta'}`);
  } else {
  APP.cart.push({
  id: product.id,
@@ -1334,7 +1394,8 @@ function addToCart(product) {
  name: product.name,
  price: product.price,
  costPrice: product.costPrice || null,
- qty: 1,
+ qty: Math.round(addAmount * 1000) / 1000,
+ unit: product.unit || 'dona',
  category: product.category || 'boshqa',
  isQuick: !!product.isQuick,
  trackStock: !!product.trackStock
@@ -1353,11 +1414,36 @@ function removeFromCart(productId) {
 function changeQty(productId, delta) {
  const item = APP.cart.find(i => i.id === productId);
  if (!item) return;
- item.qty += delta;
- if (typeof SOUNDS !== 'undefined' && delta > 0) SOUNDS.pop();
- if (item.qty <= 0) {
+ const d = parseFloat(delta) || 0;
+ const newQty = Math.round(((parseFloat(item.qty) || 0) + d) * 1000) / 1000;
+ if (newQty <= 0) {
  APP.cart = APP.cart.filter(i => i.id !== productId);
+ } else {
+ item.qty = newQty;
+ if (typeof SOUNDS !== 'undefined' && d > 0) SOUNDS.pop();
  }
+ updateCartUI();
+}
+
+function setCartQty(productId, newQty) {
+ const item = APP.cart.find(i => i.id === productId);
+ if (!item) return;
+ const val = parseFloat(newQty);
+ if (isNaN(val) || val <= 0) {
+ removeFromCart(productId);
+ return;
+ }
+ const prod = APP.products.find(p => p.id === productId);
+ if (prod && isTracked(prod)) {
+ const curStock = parseFloat(prod.stock) || 0;
+ if (val > curStock) {
+ if (!confirm(`Diqqat: Omborda ${curStock} ${item.unit || 'ta'} mavjud. ${val} ${item.unit || 'ta'} qo'yilsinmi?`)) {
+ updateCartUI();
+ return;
+ }
+ }
+ }
+ item.qty = Math.round(val * 1000) / 1000;
  updateCartUI();
 }
 
@@ -1379,7 +1465,15 @@ function updateCartUI() {
  const emptyCart = document.getElementById('emptyCart');
  const cartFooter = document.getElementById('cartFooter');
  const clearCartBtn = document.getElementById('clearCartBtn');
+ const holdCartBtn = document.getElementById('holdCartBtn');
+ const heldCartsBtn = document.getElementById('heldCartsBtn');
+ const heldCartsCount = document.getElementById('heldCartsCount');
  const cartCount = document.getElementById('cartCount');
+
+ const heldTotal = (APP.heldCarts && APP.heldCarts.length) || 0;
+ if (heldCartsBtn) heldCartsBtn.style.display = heldTotal > 0 ? 'inline-flex' : 'none';
+ if (heldCartsCount) heldCartsCount.textContent = heldTotal;
+ if (holdCartBtn) holdCartBtn.style.display = APP.cart.length > 0 ? 'inline-flex' : 'none';
 
  const totalQty = APP.cart.reduce((s, i) => s + (Number(i.qty) || 0), 0);
  if (cartCount) cartCount.textContent = totalQty;
@@ -1436,12 +1530,13 @@ function updateCartUI() {
  </div>
  <div class="item-qty-control">
  <button class="qty-btn" onclick="changeQty('${item.id}', -1)">−</button>
- <span class="qty-num">${item.qty}</span>
+ <input type="number" step="any" min="0.001" value="${item.qty}" class="cart-qty-input" onchange="setCartQty('${item.id}', this.value)" />
  <button class="qty-btn" onclick="changeQty('${item.id}', 1)">+</button>
+ <span class="qty-unit" style="font-size:0.75rem;color:var(--text3);margin-left:2px;">${escHtml(item.unit || 'ta')}</span>
  </div>
  <div class="item-price">
- <div class="item-price-each">${formatPrice(item.price)}/ta</div>
- <div class="item-price-total">${formatPrice(item.price * item.qty)}</div>
+ <div class="item-price-each">${formatPrice(item.price)}/${escHtml(item.unit || 'ta')}</div>
+ <div class="item-price-total">${formatPrice(Math.round(item.price * item.qty))}</div>
  </div>
  <button class="item-remove" onclick="removeFromCart('${item.id}')">${icon('x', 14)}</button>
  </li>
@@ -1617,7 +1712,8 @@ function applyDiscount() {
  name: i.name,
  price: Number(i.price) || 0,
  costPrice: Number(i.costPrice) || 0,
- qty: Number(i.qty) || 1,
+ qty: Math.round((Number(i.qty) || 1) * 1000) / 1000,
+ unit: i.unit || 'dona',
  category: i.category || 'boshqa',
  isQuick: Boolean(i.isQuick)
  })),
@@ -1640,9 +1736,10 @@ function applyDiscount() {
  for (const item of APP.cart) {
  const prod = APP.products.find(p => p.id === item.id);
  if (prod && isTracked(prod)) {
- const currentStock = parseInt(prod.stock, 10) || 0;
- const newStock = Math.max(0, currentStock - item.qty);
- stockUpdates.push({ prod, qty: item.qty, newStock });
+ const currentStock = parseFloat(prod.stock) || 0;
+ const itemQty = parseFloat(item.qty) || 1;
+ const newStock = Math.max(0, Math.round((currentStock - itemQty) * 1000) / 1000);
+ stockUpdates.push({ prod, qty: itemQty, newStock });
  }
  }
 
@@ -2138,6 +2235,8 @@ function showAddProductModal(product = null) {
  if (trackCheck) trackCheck.checked = product ? !!product.trackStock : false;
  const cat = product?.category || 'suv_05';
  document.getElementById('productCategory').value = cat;
+ const unitSelect = document.getElementById('productUnit');
+ if (unitSelect) unitSelect.value = product?.unit || 'dona';
  document.getElementById('editProductId').value = product?.id || '';
 
  // Rasm holati
@@ -2164,6 +2263,16 @@ function showAddProductModal(product = null) {
 
  updateSyncCategoryUI(cat);
 
+ const expInput = document.getElementById('productExpiryDate');
+ if (expInput) expInput.value = product?.expiryDate || '';
+
+ const printBtn = document.getElementById('btnProductPrintLabel');
+ if (printBtn) printBtn.style.display = product ? 'inline-flex' : 'none';
+
+ if (typeof renderProductPriceHistory === 'function') {
+  renderProductPriceHistory(product);
+ }
+
  openModal('addProductModal');
 }
 
@@ -2187,6 +2296,11 @@ function openAddProductModalWithData(onlineData, barcode, rawCode = '') {
  document.getElementById('productStock').value = '';
  const trackCheck = document.getElementById('productTrackStock');
  if (trackCheck) trackCheck.checked = false;
+ const expInput = document.getElementById('productExpiryDate');
+ if (expInput) expInput.value = '';
+ const printBtn = document.getElementById('btnProductPrintLabel');
+ if (printBtn) printBtn.style.display = 'none';
+ if (typeof renderProductPriceHistory === 'function') renderProductPriceHistory(null);
  document.getElementById('editProductId').value = '';
 
  // Toifani aniqlash: onlayn topilgan toifa bo'lsa uni olamiz (qayta yozilmasin!)
@@ -2578,9 +2692,11 @@ async function saveProduct() {
  const costPrice = parseFloat(document.getElementById('productCostPrice')?.value) || 0;
  const trackStock = document.getElementById('productTrackStock')?.checked || false;
  const stockRaw = document.getElementById('productStock').value.trim();
- const stock = trackStock ? (parseInt(stockRaw, 10) || 0) : (stockRaw ? (parseInt(stockRaw, 10) || 0) : 0);
+ const stock = trackStock ? (parseFloat(stockRaw) || 0) : (stockRaw ? (parseFloat(stockRaw) || 0) : 0);
+ const unit = document.getElementById('productUnit')?.value || 'dona';
  const category = document.getElementById('productCategory').value;
  const image = document.getElementById('productImage')?.value || null;
+ const expiryDate = document.getElementById('productExpiryDate')?.value.trim() || null;
  const syncCategory = document.getElementById('syncCategoryCheckbox')?.checked;
 
  if (!name) { showToast('Mahsulot nomini kiriting'); return; }
@@ -2598,23 +2714,51 @@ async function saveProduct() {
  }
 
  const roundedPrice = Math.round(price);
+ const roundedCostPrice = costPrice > 0 ? Math.round(costPrice) : null;
+ const prev = APP.editingProductId ? APP.products.find(p => p.id === APP.editingProductId) : null;
 
  const product = {
  id: APP.editingProductId || generateId(),
  name, barcode,
  price: roundedPrice,
- costPrice: costPrice > 0 ? Math.round(costPrice) : null,
+ costPrice: roundedCostPrice,
  stock,
  trackStock,
+ unit,
  isQuick: false,
  category,
  image,
+ expiryDate: expiryDate || null,
+ priceHistory: prev && Array.isArray(prev.priceHistory) ? [...prev.priceHistory] : [],
  updatedAt: new Date().toISOString(),
  };
 
+ // Narx tarixi qayd qilish
+ if (prev) {
+ if (prev.price !== roundedPrice || (prev.costPrice || null) !== roundedCostPrice) {
+ product.priceHistory.unshift({
+ date: new Date().toISOString(),
+ oldPrice: prev.price,
+ newPrice: roundedPrice,
+ oldCostPrice: prev.costPrice || null,
+ newCostPrice: roundedCostPrice,
+ note: 'Qo\'lda tahrirlandi'
+ });
+ if (product.priceHistory.length > 30) product.priceHistory.pop();
+ }
+ } else {
+ product.priceHistory.unshift({
+ date: new Date().toISOString(),
+ oldPrice: null,
+ newPrice: roundedPrice,
+ oldCostPrice: null,
+ newCostPrice: roundedCostPrice,
+ note: 'Yangi mahsulot'
+ });
+ }
+
  // Agar tahrirlanayotgan mahsulotda mavjud barcodes bo'lsa saqlab qolamiz
  if (APP.editingProductId) {
- const prev = APP.products.find(p => p.id === APP.editingProductId);
  if (prev && Array.isArray(prev.barcodes)) {
  product.barcodes = prev.barcodes;
  }
@@ -2637,6 +2781,18 @@ async function saveProduct() {
  if (syncCategory) {
  for (const p of APP.products) {
  if (p.id !== product.id && p.category === category) {
+ p.priceHistory = Array.isArray(p.priceHistory) ? p.priceHistory : [];
+ if (p.price !== roundedPrice) {
+ p.priceHistory.unshift({
+ date: new Date().toISOString(),
+ oldPrice: p.price,
+ newPrice: roundedPrice,
+ oldCostPrice: p.costPrice || null,
+ newCostPrice: p.costPrice || null,
+ note: `Toifa sinxroni (${name})`
+ });
+ if (p.priceHistory.length > 30) p.priceHistory.pop();
+ }
  p.price = roundedPrice;
  p.updatedAt = new Date().toISOString();
  await saveProductToDB(p);
@@ -2852,16 +3008,52 @@ function filterProducts(query) {
  renderProductGrid(filtered);
 }
 
-function renderProducts() {
- renderProductGrid(APP.products);
- updateProductStats();
+function getExpiryStatus(expiryDate) {
+ if (!expiryDate) return { status: 'none', days: null, label: '' };
+ const today = new Date();
+ today.setHours(0, 0, 0, 0);
+ const exp = new Date(expiryDate);
+ exp.setHours(0, 0, 0, 0);
+ if (isNaN(exp.getTime())) return { status: 'none', days: null, label: '' };
+
+ const days = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
+ if (days < 0) {
+  return { status: 'expired', days, label: "Muddati o'tgan" };
+ } else if (days === 0) {
+  return { status: 'today', days: 0, label: 'Bugun tugaydi' };
+ } else if (days <= 7) {
+  return { status: 'expiring', days, label: `${days} kunda tugaydi` };
+ }
+ return { status: 'ok', days, label: expiryDate };
+}
+
+function getExpiringProducts(maxDays = 7) {
+ return (APP.products || []).filter(p => {
+  if (!p.expiryDate) return false;
+  const st = getExpiryStatus(p.expiryDate);
+  return st.status === 'expired' || st.status === 'today' || (st.status === 'expiring' && st.days <= maxDays);
+ });
+}
+
+function toggleExpiringFilter() {
+ APP._filterExpiringStock = !APP._filterExpiringStock;
+ if (APP._filterExpiringStock) _filterLowStock = false;
+ const card = document.getElementById('expiringStockCard');
+ if (card) card.classList.toggle('active', APP._filterExpiringStock);
+ const lowCard = document.getElementById('lowStockCard');
+ if (lowCard) lowCard.classList.remove('active');
+ renderProducts();
+ if (APP._filterExpiringStock) showToast("Muddati o'tgan va 7 kunda tugaydigan tovarlar");
 }
 
 let _filterLowStock = false;
 function toggleLowStockFilter() {
  _filterLowStock = !_filterLowStock;
+ if (_filterLowStock) APP._filterExpiringStock = false;
  const card = document.getElementById('lowStockCard');
  if (card) card.classList.toggle('active', _filterLowStock);
+ const expCard = document.getElementById('expiringStockCard');
+ if (expCard) expCard.classList.remove('active');
  renderProducts();
  if (_filterLowStock) showToast('Faqat kam qolgan tovarlar koʻrsatilmoqda');
 }
@@ -2869,8 +3061,10 @@ function toggleLowStockFilter() {
 function renderProducts() {
  const limit = parseInt(APP.settings.lowStockLimit || 5, 10);
  let list = APP.products || [];
- if (_filterLowStock) {
- list = list.filter(p => p.trackStock !== false && (parseInt(p.stock, 10) || 0) <= limit);
+ if (APP._filterExpiringStock) {
+  list = getExpiringProducts(7);
+ } else if (_filterLowStock) {
+  list = list.filter(p => p.trackStock !== false && (parseInt(p.stock, 10) || 0) <= limit);
  }
  renderProductGrid(list);
  updateProductStats();
@@ -2893,6 +3087,15 @@ function renderProductGrid(products) {
  const isUntracked = p.trackStock === false;
  const currentStock = parseInt(p.stock, 10) || 0;
  const isLow = !isUntracked && currentStock <= limit;
+ const expInfo = getExpiryStatus(p.expiryDate);
+ let expBadgeHtml = '';
+ if (expInfo.status === 'expired') {
+  expBadgeHtml = `<span class="badge-expiry expired" title="Muddati: ${escHtml(p.expiryDate)}">⛔ Muddati o'tgan</span>`;
+ } else if (expInfo.status === 'today') {
+  expBadgeHtml = `<span class="badge-expiry warning" title="Bugun tugaydi: ${escHtml(p.expiryDate)}">[!] Bugun tugaydi</span>`;
+ } else if (expInfo.status === 'expiring') {
+  expBadgeHtml = `<span class="badge-expiry warning" title="Muddati tugayapti: ${escHtml(p.expiryDate)}">[!] ${expInfo.days} kunda tugaydi</span>`;
+ }
 
  return `
  <div class="product-card" onclick="editProductById('${p.id}')">
@@ -2903,15 +3106,17 @@ function renderProductGrid(products) {
  <div class="product-card-info">
  <div class="product-card-name">${escHtml(p.name)}</div>
  <div class="product-card-barcode">${escHtml(p.barcode || '')}</div>
- <div class="product-card-meta">
+ <div class="product-card-meta" style="flex-wrap:wrap;gap:4px;align-items:center;">
  <span class="product-card-price">${formatPrice(p.price)}</span>
  ${isUntracked
  ? `<span class="product-card-stock" style="color:var(--text3)">Cheksiz</span>`
- : `<span class="product-card-stock" style="${isLow ? 'color:#ef4444;font-weight:700' : ''}">${isLow ? icon('alert', 12, 'icon-red') + ' ' : ''}Ombor: ${currentStock} ta</span>`
+ : `<span class="product-card-stock" style="${isLow ? 'color:#ef4444;font-weight:700' : ''}">${isLow ? icon('alert', 12, 'icon-red') + ' ' : ''}Ombor: ${currentStock} ${escHtml(p.unit || 'ta')}</span>`
  }
+ ${expBadgeHtml}
  </div>
  </div>
  <div class="product-card-actions" onclick="event.stopPropagation()">
+ <button class="btn-print-label" onclick="openPrintLabelModal('${p.id}')" title="Yorliq chop etish" style="background:transparent;border:none;color:var(--text2);cursor:pointer;padding:4px;border-radius:4px;display:flex;align-items:center;">${icon('printer', 15)}</button>
  <button class="btn-edit" onclick="editProductById('${p.id}')" title="Tahrirlash">${icon('edit', 16)}</button>
  <button class="btn-del" onclick="deleteProduct('${p.id}')" title="O'chirish">${icon('trash', 16)}</button>
  </div>
@@ -2942,6 +3147,12 @@ function updateProductStats() {
  if (lowCountEl) lowCountEl.textContent = lowStockCount;
  const lowCardEl = document.getElementById('lowStockCard');
  if (lowCardEl) lowCardEl.style.display = lowStockCount > 0 ? 'flex' : 'none';
+
+ const expiringCount = getExpiringProducts(7).length;
+ const expCountEl = document.getElementById('expiringStockCount');
+ if (expCountEl) expCountEl.textContent = expiringCount;
+ const expCardEl = document.getElementById('expiringStockCard');
+ if (expCardEl) expCardEl.style.display = expiringCount > 0 ? 'flex' : 'none';
 }
 
 // Modal ichidan skaner
@@ -3631,7 +3842,8 @@ async function exportBackupJSON() {
  debts: APP.debts || [],
  settings: APP.settings || {},
  categoryPrices: APP.categoryPrices || {},
- quickItems: APP.quickItems || []
+ quickItems: APP.quickItems || [],
+ expenses: APP.expenses || []
  };
 
  const str = JSON.stringify(backupData, null, 2);
@@ -3699,12 +3911,18 @@ async function handleRestoreFile(event) {
  (data.debts || []).forEach(d => {
  if (!existingDebtIds.has(d.id)) APP.debts.push(d);
  });
+
+ const existingExpenseIds = new Set((APP.expenses || []).map(e => e.id));
+ (data.expenses || []).forEach(e => {
+ if (!existingExpenseIds.has(e.id)) (APP.expenses = APP.expenses || []).push(e);
+ });
  } else {
  // Replace
  if (data.products) APP.products = data.products;
  if (data.bills) APP.bills = data.bills;
  if (data.debtors) APP.debtors = data.debtors;
  if (data.debts) APP.debts = data.debts;
+ if (data.expenses) APP.expenses = data.expenses;
  if (data.settings) APP.settings = { ...APP.settings, ...data.settings };
  if (data.categoryPrices) APP.categoryPrices = data.categoryPrices;
  if (data.quickItems) APP.quickItems = data.quickItems;
@@ -3861,6 +4079,8 @@ function loadSettings() {
  if (el('discountEnabled')) el('discountEnabled').checked = APP.settings.discountEnabled || false;
  if (el('voiceEnabled')) el('voiceEnabled').checked = APP.settings.voiceEnabled !== false;
  if (el('voiceLang')) el('voiceLang').value = APP.settings.voiceLang || 'uz-UZ';
+ if (el('settingsLangSelect')) el('settingsLangSelect').value = APP.settings.lang || 'uz';
+ if (typeof applyLanguage === 'function') applyLanguage();
 
  APP.voiceOn = APP.settings.voiceEnabled !== false;
 }
@@ -3874,6 +4094,7 @@ function saveSettings() {
  discountEnabled: document.getElementById('discountEnabled')?.checked || false,
  voiceEnabled: document.getElementById('voiceEnabled')?.checked !== false,
  voiceLang: document.getElementById('voiceLang')?.value || 'uz-UZ',
+ lang: APP.settings?.lang || document.getElementById('settingsLangSelect')?.value || 'uz',
  };
  localStorage.setItem('scanpos_settings', JSON.stringify(APP.settings));
  APP.voiceOn = APP.settings.voiceEnabled;
@@ -3925,6 +4146,23 @@ async function loadLocalData() {
  if (Array.isArray(bIDB) && bIDB.length > 0) {
  APP.bills = bIDB;
  }
+ const hIDB = await ScanDB.get('scanpos_held_carts');
+ if (Array.isArray(hIDB)) {
+ APP.heldCarts = hIDB;
+ }
+ const sIDB = await ScanDB.get('scanpos_supplies');
+ if (Array.isArray(sIDB)) {
+ APP.supplies = sIDB;
+ }
+ const expIDB = await ScanDB.get('scanpos_expenses');
+ if (Array.isArray(expIDB)) {
+ APP.expenses = expIDB;
+ } else {
+ try {
+  const eSync = localStorage.getItem('scanpos_expenses');
+  if (eSync) APP.expenses = JSON.parse(eSync);
+ } catch (e) {}
+ }
 
  // 3. Migratsiya: localStorage -> IndexedDB
  if (!localStorage.getItem('scanpos_migrated_v1')) {
@@ -3974,6 +4212,8 @@ async function saveLocalData() {
  // Mahsulotlar (rasmlari bilan) va cheklar IndexedDB (ScanDB) da saqlanadi
  const ok1 = await ScanDB.set('scanpos_products', APP.products || []);
  const ok2 = await ScanDB.set('scanpos_bills', APP.bills || []);
+ await ScanDB.set('scanpos_expenses', APP.expenses || []);
+ try { localStorage.setItem('scanpos_expenses', JSON.stringify(APP.expenses || [])); } catch (e) {}
  if (ok1 === false || ok2 === false) {
  showToast('Xotira to\'ldi yoki saqlanmadi', 'error');
  }
@@ -4283,6 +4523,34 @@ function renderAnalytics() {
  }
  const refundsEl = document.getElementById('anTotalRefunds');
  if (refundsEl) refundsEl.textContent = formatPriceShort(totalRefunds) + ' so\'m';
+
+ // Do'kon xarajatlari va Haqiqiy sof foyda hisobi
+ const periodExpenses = (APP.expenses || []).filter(e => {
+  const d = new Date(e.date || e.createdAt);
+  return !isNaN(d.getTime()) && d >= cutoff;
+ });
+ const totalExpenses = periodExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+ const realNetProfit = totalProfit - totalExpenses;
+
+ const expEl = document.getElementById('anTotalExpenses');
+ if (expEl) expEl.textContent = formatPriceShort(totalExpenses) + ' so\'m';
+
+ const netProfitEl = document.getElementById('anNetRealProfit');
+ if (netProfitEl) {
+  const sign = realNetProfit < 0 ? '-' : '';
+  netProfitEl.textContent = sign + formatPriceShort(Math.abs(realNetProfit)) + ' so\'m';
+ }
+ const netCardEl = document.getElementById('anNetRealProfitCard');
+ const netNoteEl = document.getElementById('anNetProfitNote');
+ if (netCardEl) {
+  if (realNetProfit < 0) {
+   netCardEl.style.background = 'linear-gradient(135deg, #b91c1c, #dc2626)';
+   if (netNoteEl) netNoteEl.textContent = 'ZARAR! Xarajatlar foydadan oshdi';
+  } else {
+   netCardEl.style.background = 'linear-gradient(135deg, #0284c7, #0369a1)';
+   if (netNoteEl) netNoteEl.textContent = 'Sotuv - Tannarx - Xarajat';
+  }
+ }
 
  // ── TOP-5 products ──
  buildTopProducts(filtered);
@@ -4887,6 +5155,1294 @@ window.showPage = function (page) {
  }
 };
 
+
+
+// ─────────────────────────────────────────────
+// TOVAR KIRIMI (SUPPLY / STOCK IN)
+// ─────────────────────────────────────────────
+function openSupplyModal(productId = null) {
+ APP.activeSupplyProduct = null;
+ const barcodeInput = document.getElementById('supplyBarcode');
+ if (barcodeInput) barcodeInput.value = '';
+ const searchResults = document.getElementById('supplySearchResults');
+ if (searchResults) { searchResults.innerHTML = ''; searchResults.style.display = 'none'; }
+ const productCard = document.getElementById('supplyProductCard');
+ if (productCard) productCard.style.display = 'none';
+ const qtyInput = document.getElementById('supplyQty');
+ if (qtyInput) qtyInput.value = '';
+ const costInput = document.getElementById('supplyCostPrice');
+ if (costInput) costInput.value = '';
+ const saleInput = document.getElementById('supplySalePrice');
+ if (saleInput) saleInput.value = '';
+ const idInput = document.getElementById('supplySelectedProductId');
+ if (idInput) idInput.value = '';
+
+ if (productId) {
+ const p = APP.products.find(item => item.id === productId);
+ if (p) selectSupplyProduct(p);
+ }
+ openModal('supplyModal');
+}
+
+function onSupplySearch(val) {
+ const q = (val || '').trim().toLowerCase();
+ const resultsDiv = document.getElementById('supplySearchResults');
+ if (!resultsDiv) return;
+ if (!q) {
+ resultsDiv.innerHTML = '';
+ resultsDiv.style.display = 'none';
+ return;
+ }
+ const cleanBarcode = extractProductBarcode(q);
+ const exact = APP.products.find(p => p.barcode === cleanBarcode || (Array.isArray(p.barcodes) && p.barcodes.includes(cleanBarcode)));
+ if (exact) {
+ selectSupplyProduct(exact);
+ resultsDiv.style.display = 'none';
+ return;
+ }
+ const matches = APP.products.filter(p =>
+ (p.name && p.name.toLowerCase().includes(q)) ||
+ (p.barcode && p.barcode.includes(q))
+ ).slice(0, 8);
+
+ if (matches.length === 0) {
+ resultsDiv.innerHTML = '<div style="padding:10px;font-size:0.8rem;color:var(--text3);">Tovar topilmadi</div>';
+ resultsDiv.style.display = 'block';
+ return;
+ }
+
+ resultsDiv.innerHTML = matches.map(p => `
+ <div class="supply-search-item" onclick="selectSupplyProductById('${p.id}')">
+ <div>
+ <div class="supply-search-item-name">${escHtml(p.name)}</div>
+ <div class="supply-search-item-meta">${escHtml(p.barcode || '')} • Omborda: ${p.stock || 0} ${escHtml(p.unit || 'ta')}</div>
+ </div>
+ <div style="font-weight:700;color:var(--cyan);">${formatPrice(p.price)}</div>
+ </div>
+ `).join('');
+ resultsDiv.style.display = 'block';
+}
+
+function selectSupplyProductById(id) {
+ const p = APP.products.find(item => item.id === id);
+ if (p) selectSupplyProduct(p);
+}
+
+function selectSupplyProduct(product) {
+ APP.activeSupplyProduct = product;
+ const resultsDiv = document.getElementById('supplySearchResults');
+ if (resultsDiv) resultsDiv.style.display = 'none';
+ const idInput = document.getElementById('supplySelectedProductId');
+ if (idInput) idInput.value = product.id;
+ const barcodeInput = document.getElementById('supplyBarcode');
+ if (barcodeInput) barcodeInput.value = product.name;
+
+ const card = document.getElementById('supplyProductCard');
+ if (card) {
+ card.style.display = 'block';
+ const nameEl = document.getElementById('spCardName');
+ if (nameEl) nameEl.textContent = product.name;
+ const bcEl = document.getElementById('spCardBarcode');
+ if (bcEl) bcEl.textContent = 'Kod: ' + (product.barcode || '—');
+ const stEl = document.getElementById('spCardStock');
+ if (stEl) stEl.textContent = `${parseFloat(product.stock) || 0} ${product.unit || 'ta'}`;
+ const costEl = document.getElementById('spCardCost');
+ if (costEl) costEl.textContent = product.costPrice ? `${formatPrice(product.costPrice)}/${product.unit || 'ta'}` : 'Belgilanmagan';
+ const prEl = document.getElementById('spCardPrice');
+ if (prEl) prEl.textContent = `${formatPrice(product.price)}/${product.unit || 'ta'}`;
+ }
+
+ const costInput = document.getElementById('supplyCostPrice');
+ if (costInput && product.costPrice) costInput.value = product.costPrice;
+ const qtyInput = document.getElementById('supplyQty');
+ if (qtyInput) qtyInput.focus();
+}
+
+function scanForSupply() {
+ closeModal('supplyModal');
+ showPage('scanner');
+ APP._scanForSupply = true;
+ showToast('Kirim uchun shtrix-kodni kameraga ko\'rsating');
+ updateScanHint('Kirim uchun shtrix-kod skanerlang...', 'success');
+}
+
+async function submitSupply() {
+ const prodId = document.getElementById('supplySelectedProductId')?.value || APP.activeSupplyProduct?.id;
+ if (!prodId) {
+ showToast('Tovarni tanlang yoki skanerlang', 'warning');
+ return;
+ }
+ const prod = APP.products.find(p => p.id === prodId);
+ if (!prod) {
+ showToast('Tovar topilmadi', 'error');
+ return;
+ }
+ const qty = parseFloat(document.getElementById('supplyQty')?.value);
+ if (isNaN(qty) || qty <= 0) {
+ showToast('Kirim miqdorini to\'g\'ri kiriting', 'warning');
+ return;
+ }
+ const costPrice = parseFloat(document.getElementById('supplyCostPrice')?.value);
+ if (isNaN(costPrice) || costPrice < 0) {
+ showToast('Kelish narxini to\'g\'ri kiriting', 'warning');
+ return;
+ }
+ const salePriceRaw = parseFloat(document.getElementById('supplySalePrice')?.value);
+
+ const prevStock = parseFloat(prod.stock) || 0;
+ const newStock = Math.round((prevStock + qty) * 1000) / 1000;
+ prod.stock = newStock;
+ prod.trackStock = true;
+ prod.costPrice = Math.round(costPrice);
+ if (!isNaN(salePriceRaw) && salePriceRaw > 0) {
+ prod.price = Math.round(salePriceRaw);
+ }
+ prod.updatedAt = new Date().toISOString();
+
+ await saveProductToDB(prod);
+ await saveLocalData();
+ renderProducts();
+ updateProductStats();
+
+ const record = {
+ id: generateId(),
+ productId: prod.id,
+ productName: prod.name,
+ barcode: prod.barcode || '',
+ qty,
+ unit: prod.unit || 'ta',
+ costPrice: prod.costPrice,
+ price: prod.price,
+ timestamp: new Date().toISOString()
+ };
+ if (!Array.isArray(APP.supplies)) APP.supplies = [];
+ APP.supplies.unshift(record);
+ await ScanDB.set('scanpos_supplies', APP.supplies);
+
+ closeModal('supplyModal');
+ if (typeof SOUNDS !== 'undefined') SOUNDS.tiq();
+ showToast(`Kirim qabul qilindi: ${prod.name} (+${qty} ${prod.unit || 'ta'}, jami: ${newStock} ${prod.unit || 'ta'})`, 'success');
+}
+
+// ─────────────────────────────────────────────
+// TOVARLARNI EXCEL / CSV DAN IMPORT QILISH
+// ─────────────────────────────────────────────
+let _parsedCSVProducts = [];
+
+function openImportCSVModal() {
+ _parsedCSVProducts = [];
+ const fileInput = document.getElementById('csvFileInput');
+ if (fileInput) fileInput.value = '';
+ const textInput = document.getElementById('csvTextInput');
+ if (textInput) textInput.value = '';
+ const preview = document.getElementById('csvPreviewArea');
+ if (preview) preview.style.display = 'none';
+ const btn = document.getElementById('btnExecuteCSVImport');
+ if (btn) btn.disabled = true;
+ openModal('importCSVModal');
+}
+
+function downloadCSVTemplate() {
+ const header = "Nomi,Shtrixkod,Sotish narxi,Kelish narxi,Qoldiq,Birlik,Toifa\r\n";
+ const rows = [
+ "Coca-Cola 1.5L,4780001234567,14000,11000,24,dona,ichimlik",
+ "Mol go'shti,200000000001,95000,80000,18.5,kg,oziq",
+ "Qora non,200000000002,4000,3000,50,dona,non",
+ "Shakar,200000000003,12000,10000,100,kg,oziq"
+ ].join("\r\n");
+
+ const blob = new Blob(["\uFEFF" + header + rows], { type: 'text/csv;charset=utf-8;' });
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement('a');
+ a.href = url;
+ a.download = 'scanpos_tovarlar_namuna.csv';
+ document.body.appendChild(a);
+ a.click();
+ document.body.removeChild(a);
+ URL.revokeObjectURL(url);
+ showToast('Namuna shablon yuklab olindi');
+}
+
+function parseCSVLine(line, delimiter) {
+ const result = [];
+ let current = '';
+ let inQuotes = false;
+ for (let i = 0; i < line.length; i++) {
+ const char = line[i];
+ if (char === '"') {
+ inQuotes = !inQuotes;
+ } else if (char === delimiter && !inQuotes) {
+ result.push(current.trim());
+ current = '';
+ } else {
+ current += char;
+ }
+ }
+ result.push(current.trim());
+ return result;
+}
+
+function parseCSV(text) {
+ if (!text || typeof text !== 'string') return [];
+ const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+ if (lines.length < 2) return [];
+
+ const firstLine = lines[0];
+ let delimiter = ',';
+ if (firstLine.includes(';') && (firstLine.split(';').length > firstLine.split(',').length)) {
+ delimiter = ';';
+ } else if (firstLine.includes('\t')) {
+ delimiter = '\t';
+ }
+
+ const rawHeaders = parseCSVLine(firstLine, delimiter).map(h => h.toLowerCase().replace(/[^a-z0-9а-яёo'g']/gi, ''));
+
+ let nameIdx = -1, barcodeIdx = -1, priceIdx = -1, costIdx = -1, stockIdx = -1, unitIdx = -1, catIdx = -1;
+
+ rawHeaders.forEach((h, idx) => {
+ if (/name|nomi|mahsulot|tovar|товар|наименование/i.test(h)) nameIdx = idx;
+ else if (/barcode|shtrix|kod|штрих|код/i.test(h)) barcodeIdx = idx;
+ else if (/cost|tannarx|kelish|себестоимость|приход/i.test(h)) costIdx = idx;
+ else if (/sotish|price|narx|цена/i.test(h)) priceIdx = idx;
+ else if (/stock|qoldiq|soni|miqdor|остаток|колво/i.test(h)) stockIdx = idx;
+ else if (/unit|birlik|olchov|ед/i.test(h)) unitIdx = idx;
+ else if (/cat|toifa|kategoriya|категория/i.test(h)) catIdx = idx;
+ });
+
+ if (nameIdx === -1) nameIdx = 0;
+ if (barcodeIdx === -1 && rawHeaders.length > 1) barcodeIdx = 1;
+ if (priceIdx === -1 && rawHeaders.length > 2) priceIdx = 2;
+ if (costIdx === -1 && rawHeaders.length > 3) costIdx = 3;
+ if (stockIdx === -1 && rawHeaders.length > 4) stockIdx = 4;
+ if (unitIdx === -1 && rawHeaders.length > 5) unitIdx = 5;
+
+ const products = [];
+ for (let i = 1; i < lines.length; i++) {
+ const cols = parseCSVLine(lines[i], delimiter);
+ const getCol = (idx) => (idx >= 0 && cols[idx] !== undefined && cols[idx] !== null) ? String(cols[idx]).trim() : '';
+ const name = getCol(nameIdx);
+ if (!name) continue;
+
+ let barcode = getCol(barcodeIdx);
+ if (!barcode) {
+ barcode = '200' + String(Math.floor(100000000 + Math.random() * 900000000));
+ }
+ const cleanBarcode = extractProductBarcode(barcode);
+
+ const priceRaw = getCol(priceIdx).replace(/[^0-9.]/g, '');
+ const price = parseFloat(priceRaw) || 0;
+ if (price <= 0) continue;
+
+ const costRaw = getCol(costIdx).replace(/[^0-9.]/g, '');
+ const costPrice = parseFloat(costRaw) || null;
+
+ const stockRaw = getCol(stockIdx).replace(/[^0-9.]/g, '');
+ const stock = stockRaw !== '' ? (parseFloat(stockRaw) || 0) : 0;
+ const trackStock = stockRaw !== '';
+
+ let unit = getCol(unitIdx).toLowerCase();
+ if (!['dona', 'kg', 'g', 'l', 'm'].includes(unit)) {
+ if (unit.includes('kg') || unit.includes('кг')) unit = 'kg';
+ else if (unit.includes('gram') || unit.includes('гр') || unit === 'g') unit = 'g';
+ else if (unit.includes('lit') || unit.includes('лит') || unit === 'l') unit = 'l';
+ else if (unit.includes('met') || unit.includes('метр') || unit === 'm') unit = 'm';
+ else unit = 'dona';
+ }
+
+ const category = getCol(catIdx) || 'boshqa';
+
+ products.push({
+ name,
+ barcode: cleanBarcode,
+ price: Math.round(price),
+ costPrice: costPrice ? Math.round(costPrice) : null,
+ stock,
+ trackStock,
+ unit,
+ category
+ });
+ }
+ return products;
+}
+
+function handleCSVFileSelect(event) {
+ const file = event.target.files?.[0];
+ if (!file) return;
+ const reader = new FileReader();
+ reader.onload = function(e) {
+ const text = e.target.result;
+ const textInput = document.getElementById('csvTextInput');
+ if (textInput) textInput.value = text;
+ parseCSVFromText(text);
+ };
+ reader.readAsText(file, 'utf-8');
+}
+
+function parseCSVFromText(text) {
+ _parsedCSVProducts = parseCSV(text);
+ const preview = document.getElementById('csvPreviewArea');
+ const summary = document.getElementById('csvSummaryText');
+ const list = document.getElementById('csvPreviewList');
+ const btn = document.getElementById('btnExecuteCSVImport');
+
+ if (!_parsedCSVProducts || _parsedCSVProducts.length === 0) {
+ if (preview) preview.style.display = 'none';
+ if (btn) btn.disabled = true;
+ return;
+ }
+
+ let existingCount = 0;
+ let newCount = 0;
+ _parsedCSVProducts.forEach(p => {
+ const exists = APP.products.some(curr => curr.barcode === p.barcode);
+ if (exists) existingCount++;
+ else newCount++;
+ });
+
+ if (summary) {
+ summary.textContent = `Aniqlangan tovarlar: ${_parsedCSVProducts.length} ta (${newCount} ta yangi, ${existingCount} ta mavjud yangilanadi)`;
+ }
+ if (list) {
+ list.innerHTML = _parsedCSVProducts.slice(0, 10).map((p, idx) => `
+ <div style="padding:2px 0;">${idx + 1}. <strong>${escHtml(p.name)}</strong> (${escHtml(p.barcode)}) — ${formatPrice(p.price)} so'm [Ombor: ${p.stock} ${escHtml(p.unit)}]</div>
+ `).join('') + (_parsedCSVProducts.length > 10 ? `<div style="font-style:italic;margin-top:4px;">... va yana ${_parsedCSVProducts.length - 10} ta tovar</div>` : '');
+ }
+ if (preview) preview.style.display = 'block';
+ if (btn) btn.disabled = false;
+}
+
+async function executeCSVImport() {
+ if (!_parsedCSVProducts || _parsedCSVProducts.length === 0) {
+ showToast('Import qilish uchun tovar topilmadi', 'warning');
+ return;
+ }
+ const count = _parsedCSVProducts.length;
+ let updated = 0;
+ let created = 0;
+
+ for (const item of _parsedCSVProducts) {
+ const idx = APP.products.findIndex(p => p.barcode === item.barcode);
+ if (idx >= 0) {
+ const curr = APP.products[idx];
+ curr.name = item.name;
+ curr.price = item.price;
+ if (item.costPrice !== null) curr.costPrice = item.costPrice;
+ curr.stock = item.stock;
+ curr.trackStock = item.trackStock;
+ curr.unit = item.unit;
+ curr.updatedAt = new Date().toISOString();
+ normalizeProduct(curr);
+ await saveProductToDB(curr);
+ updated++;
+ } else {
+ const newProd = {
+ id: generateId(),
+ name: item.name,
+ barcode: item.barcode,
+ price: item.price,
+ costPrice: item.costPrice,
+ stock: item.stock,
+ trackStock: item.trackStock,
+ unit: item.unit,
+ category: item.category || 'boshqa',
+ isQuick: false,
+ createdAt: new Date().toISOString(),
+ updatedAt: new Date().toISOString()
+ };
+ normalizeProduct(newProd);
+ await saveProductToDB(newProd);
+ created++;
+ }
+ }
+
+ await saveLocalData();
+ renderProducts();
+ updateProductStats();
+ closeModal('importCSVModal');
+ showToast(`${count} ta tovar import qilindi (${created} ta yangi, ${updated} ta yangilandi)!`, 'success');
+}
+
+// ─────────────────────────────────────────────
+// SAVATNI TO'XTATIB TURISH (HOLD CART)
+// ─────────────────────────────────────────────
+async function saveHeldCarts() {
+ await ScanDB.set('scanpos_held_carts', APP.heldCarts || []);
+ try {
+ localStorage.setItem('scanpos_held_carts', JSON.stringify(APP.heldCarts || []));
+ } catch (e) {}
+}
+
+async function holdCurrentCart() {
+ if (!APP.cart || APP.cart.length === 0) {
+ showToast('Savat bo\'sh!', 'warning');
+ return;
+ }
+ const defaultLabel = `Mijoz #${(APP.heldCarts ? APP.heldCarts.length : 0) + 1}`;
+ let label = '';
+ try {
+ label = prompt('Mijoz haqida qisqa eslatma (ixtiyoriy):', defaultLabel);
+ } catch (e) {}
+ if (!label || !label.trim()) label = defaultLabel;
+
+ const { total: grand } = calcTotals(APP.cart, 0, APP.settings.taxRate);
+
+ const heldItem = {
+ id: generateId(),
+ label: label.trim(),
+ heldAt: new Date().toISOString(),
+ timeStr: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
+ items: JSON.parse(JSON.stringify(APP.cart)),
+ itemCount: APP.cart.reduce((s, i) => s + (Number(i.qty) || 0), 0),
+ total: grand
+ };
+
+ if (!Array.isArray(APP.heldCarts)) APP.heldCarts = [];
+ APP.heldCarts.unshift(heldItem);
+ APP.cart = [];
+ await saveHeldCarts();
+ updateCartUI();
+ showToast(`${heldItem.label} savati kutishga qo'yildi`, 'info');
+}
+
+function openHeldCartsModal() {
+ renderHeldCartsList();
+ openModal('heldCartsModal');
+}
+
+function renderHeldCartsList() {
+ const container = document.getElementById('heldCartsList');
+ if (!container) return;
+
+ if (!APP.heldCarts || APP.heldCarts.length === 0) {
+ container.innerHTML = `
+ <div class="empty-state" style="padding:20px 0;">
+ <div class="empty-icon" style="margin:0 auto 8px;">${icon('box', 36)}</div>
+ <p style="font-size:0.9rem;">Kutishda savat yo'q</p>
+ </div>`;
+ return;
+ }
+
+ container.innerHTML = APP.heldCarts.map(h => `
+ <div class="held-cart-card">
+ <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+ <div>
+ <div style="font-weight:700;font-size:0.95rem;color:var(--text);">${escHtml(h.label)}</div>
+ <div style="font-size:0.75rem;color:var(--text3);margin-top:2px;">Vaqt: ${escHtml(h.timeStr || '')} • ${h.items?.length || 0} xil tovar (${h.itemCount || 0} ta)</div>
+ </div>
+ <div style="font-weight:800;font-size:1rem;color:var(--cyan);">${formatPrice(h.total || 0)}</div>
+ </div>
+ <div style="font-size:0.8rem;color:var(--text2);line-height:1.3;background:var(--bg2);padding:6px 8px;border-radius:6px;">
+ ${(h.items || []).map(i => `${escHtml(i.name)} (${i.qty} ${escHtml(i.unit || 'ta')})`).join(', ')}
+ </div>
+ <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
+ <button type="button" class="btn-danger btn-xs" onclick="deleteHeldCart('${h.id}')" style="padding:5px 10px;font-size:0.75rem;border-radius:6px;">
+ O'chirish
+ </button>
+ <button type="button" class="btn-success btn-xs" onclick="restoreHeldCart('${h.id}')" style="padding:5px 12px;font-size:0.75rem;font-weight:700;border-radius:6px;display:inline-flex;align-items:center;gap:4px;">
+ <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+ <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+ </svg>
+ Savatga qaytarish
+ </button>
+ </div>
+ </div>
+ `).join('');
+}
+
+async function restoreHeldCart(heldId) {
+ const held = (APP.heldCarts || []).find(h => h.id === heldId);
+ if (!held) return;
+
+ if (APP.cart && APP.cart.length > 0) {
+ if (!confirm('Hozirgi savatda tovarlar bor! Ularni ham kutishga qo\'yib, bu savatni tiklaysizmi?')) {
+ return;
+ }
+ const autoHeld = {
+ id: generateId(),
+ label: `Mijoz #${(APP.heldCarts.length) + 1}`,
+ heldAt: new Date().toISOString(),
+ timeStr: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }),
+ items: JSON.parse(JSON.stringify(APP.cart)),
+ itemCount: APP.cart.reduce((s, i) => s + (Number(i.qty) || 0), 0),
+ total: calcTotals(APP.cart, 0, APP.settings.taxRate).total
+ };
+ APP.heldCarts.unshift(autoHeld);
+ }
+
+ APP.cart = JSON.parse(JSON.stringify(held.items));
+ APP.heldCarts = APP.heldCarts.filter(h => h.id !== heldId);
+ await saveHeldCarts();
+ updateCartUI();
+ closeModal('heldCartsModal');
+ showToast(`${held.label} savati kassa ekraniga tiklandi!`, 'success');
+}
+
+async function deleteHeldCart(heldId) {
+ if (!confirm('Ushbu kutishdagi savatni o\'chirishni tasdiqlaysizmi?')) return;
+ APP.heldCarts = (APP.heldCarts || []).filter(h => h.id !== heldId);
+ await saveHeldCarts();
+ renderHeldCartsList();
+ updateCartUI();
+ showToast('Kutishdagi savat o\'chirildi');
+}
+
+async function clearAllHeldCarts() {
+ if (!APP.heldCarts || APP.heldCarts.length === 0) return;
+ if (!confirm('Barcha kutishdagi savatlarni tozalashni tasdiqlaysizmi?')) return;
+ APP.heldCarts = [];
+ await saveHeldCarts();
+ renderHeldCartsList();
+ updateCartUI();
+ showToast('Kutishdagi barcha savatlar tozalandi');
+}
+
+// ─────────────────────────────────────────────
+// OMBOR SANOG'I (REVIZIYA / INVENTARIZATSIYA)
+// ─────────────────────────────────────────────
+function openAuditModal() {
+ APP.activeAuditProduct = null;
+ const barcodeInput = document.getElementById('auditBarcode');
+ if (barcodeInput) barcodeInput.value = '';
+ const searchResults = document.getElementById('auditSearchResults');
+ if (searchResults) { searchResults.innerHTML = ''; searchResults.style.display = 'none'; }
+ const activeBox = document.getElementById('auditActiveProductBox');
+ if (activeBox) activeBox.style.display = 'none';
+ renderAuditList();
+ openModal('auditModal');
+}
+
+function onAuditSearch(val) {
+ const q = (val || '').trim().toLowerCase();
+ const resultsDiv = document.getElementById('auditSearchResults');
+ if (!resultsDiv) return;
+ if (!q) {
+ resultsDiv.innerHTML = '';
+ resultsDiv.style.display = 'none';
+ return;
+ }
+ const cleanBarcode = extractProductBarcode(q);
+ const exact = APP.products.find(p => p.barcode === cleanBarcode || (Array.isArray(p.barcodes) && p.barcodes.includes(cleanBarcode)));
+ if (exact) {
+ selectAuditProduct(exact);
+ resultsDiv.style.display = 'none';
+ return;
+ }
+ const matches = APP.products.filter(p =>
+ (p.name && p.name.toLowerCase().includes(q)) ||
+ (p.barcode && p.barcode.includes(q))
+ ).slice(0, 8);
+
+ if (matches.length === 0) {
+ resultsDiv.innerHTML = '<div style="padding:10px;font-size:0.8rem;color:var(--text3);">Tovar topilmadi</div>';
+ resultsDiv.style.display = 'block';
+ return;
+ }
+
+ resultsDiv.innerHTML = matches.map(p => `
+ <div class="supply-search-item" onclick="selectAuditProductById('${p.id}')">
+ <div>
+ <div class="supply-search-item-name">${escHtml(p.name)}</div>
+ <div class="supply-search-item-meta">${escHtml(p.barcode || '')} • Tizimda: ${parseFloat(p.stock) || 0} ${escHtml(p.unit || 'ta')}</div>
+ </div>
+ <div style="font-weight:700;color:var(--cyan);">${formatPrice(p.price)}</div>
+ </div>
+ `).join('');
+ resultsDiv.style.display = 'block';
+}
+
+function selectAuditProductById(id) {
+ const p = APP.products.find(item => item.id === id);
+ if (p) selectAuditProduct(p);
+}
+
+function selectAuditProduct(product) {
+ APP.activeAuditProduct = product;
+ const resultsDiv = document.getElementById('auditSearchResults');
+ if (resultsDiv) resultsDiv.style.display = 'none';
+ const barcodeInput = document.getElementById('auditBarcode');
+ if (barcodeInput) barcodeInput.value = product.name;
+
+ const box = document.getElementById('auditActiveProductBox');
+ if (box) box.style.display = 'block';
+ const nameEl = document.getElementById('auditActiveName');
+ if (nameEl) nameEl.textContent = product.name;
+ const bcEl = document.getElementById('auditActiveBarcode');
+ if (bcEl) bcEl.textContent = 'Kod: ' + (product.barcode || '—');
+ const sysEl = document.getElementById('auditActiveSysStock');
+ const sysStock = parseFloat(product.stock) || 0;
+ if (sysEl) sysEl.textContent = `${sysStock} ${product.unit || 'ta'}`;
+
+ const existingAudit = (APP.auditItems || []).find(i => i.productId === product.id);
+ const input = document.getElementById('auditActualInput');
+ if (input) {
+ input.value = existingAudit ? existingAudit.actualStock : '';
+ input.focus();
+ }
+ calcAuditItemDiff();
+}
+
+function calcAuditItemDiff() {
+ const badge = document.getElementById('auditActiveDiffBadge');
+ if (!badge) return;
+ if (!APP.activeAuditProduct) {
+ badge.innerHTML = '';
+ return;
+ }
+ const input = document.getElementById('auditActualInput');
+ const actualVal = parseFloat(input?.value);
+ if (isNaN(actualVal)) {
+ badge.innerHTML = '';
+ return;
+ }
+ const sysStock = parseFloat(APP.activeAuditProduct.stock) || 0;
+ const diff = Math.round((actualVal - sysStock) * 1000) / 1000;
+ const cost = APP.activeAuditProduct.costPrice || APP.activeAuditProduct.price || 0;
+ const sum = Math.round(Math.abs(diff) * cost);
+ const unit = APP.activeAuditProduct.unit || 'ta';
+
+ if (diff < 0) {
+ badge.innerHTML = `<span style="color:var(--red);">Kamomad: ${Math.abs(diff)} ${unit} (-${formatPrice(sum)} so'm)</span>`;
+ } else if (diff > 0) {
+ badge.innerHTML = `<span style="color:var(--green);">Ortiqcha: +${diff} ${unit} (+${formatPrice(sum)} so'm)</span>`;
+ } else {
+ badge.innerHTML = `<span style="color:var(--text3);">Farq yo'q (To'liq mos)</span>`;
+ }
+}
+
+function commitAuditActiveItem() {
+ if (!APP.activeAuditProduct) return;
+ const input = document.getElementById('auditActualInput');
+ const actualVal = parseFloat(input?.value);
+ if (isNaN(actualVal) || actualVal < 0) {
+ showToast('Haqiqiy sanalgan miqdorni kiriting', 'warning');
+ return;
+ }
+ const p = APP.activeAuditProduct;
+ const sysStock = parseFloat(p.stock) || 0;
+ const diff = Math.round((actualVal - sysStock) * 1000) / 1000;
+ const cost = p.costPrice || p.price || 0;
+ const lossAmount = diff < 0 ? Math.round(Math.abs(diff) * cost) : 0;
+ const gainAmount = diff > 0 ? Math.round(diff * cost) : 0;
+
+ if (!Array.isArray(APP.auditItems)) APP.auditItems = [];
+ const existingIdx = APP.auditItems.findIndex(i => i.productId === p.id);
+ const itemData = {
+ productId: p.id,
+ name: p.name,
+ barcode: p.barcode || '',
+ unit: p.unit || 'ta',
+ systemStock: sysStock,
+ actualStock: actualVal,
+ diff,
+ costPrice: cost,
+ lossAmount,
+ gainAmount
+ };
+
+ if (existingIdx >= 0) {
+ APP.auditItems[existingIdx] = itemData;
+ } else {
+ APP.auditItems.unshift(itemData);
+ }
+
+ APP.activeAuditProduct = null;
+ const box = document.getElementById('auditActiveProductBox');
+ if (box) box.style.display = 'none';
+ const barcodeInput = document.getElementById('auditBarcode');
+ if (barcodeInput) { barcodeInput.value = ''; barcodeInput.focus(); }
+
+ renderAuditList();
+ showToast(`${p.name} sanoqqa kiritildi`);
+}
+
+function renderAuditList() {
+ const container = document.getElementById('auditItemsList');
+ const countEl = document.getElementById('auditCount');
+ const lossEl = document.getElementById('auditTotalLoss');
+ const gainEl = document.getElementById('auditTotalGain');
+
+ const items = APP.auditItems || [];
+ if (countEl) countEl.textContent = items.length;
+
+ let totalLoss = 0;
+ let totalGain = 0;
+ items.forEach(i => {
+ totalLoss += i.lossAmount || 0;
+ totalGain += i.gainAmount || 0;
+ });
+
+ if (lossEl) lossEl.textContent = `-${formatPrice(totalLoss)}`;
+ if (gainEl) gainEl.textContent = `+${formatPrice(totalGain)}`;
+
+ if (!container) return;
+ if (items.length === 0) {
+ container.innerHTML = '<div style="font-size:0.8rem;color:var(--text3);text-align:center;padding:12px;">Hali hech qanday tovar sanalmadi. Shtrix-kod skanerlang.</div>';
+ return;
+ }
+
+ container.innerHTML = items.map((i, idx) => `
+ <div class="audit-item-card">
+ <div style="flex:1;">
+ <div style="font-weight:600;font-size:0.85rem;">${idx + 1}. ${escHtml(i.name)}</div>
+ <div style="font-size:0.75rem;color:var(--text3);margin-top:2px;">
+ Tizimda: <strong>${i.systemStock}</strong> | Fakt: <strong>${i.actualStock}</strong> ${escHtml(i.unit)}
+ </div>
+ </div>
+ <div style="text-align:right;">
+ <div style="font-weight:700;font-size:0.85rem;color:${i.diff < 0 ? 'var(--red)' : (i.diff > 0 ? 'var(--green)' : 'var(--text3)')};">
+ ${i.diff > 0 ? '+' : ''}${i.diff} ${escHtml(i.unit)}
+ </div>
+ <div style="font-size:0.7rem;color:var(--text3);">
+ ${i.diff < 0 ? `-${formatPrice(i.lossAmount)} so'm` : (i.diff > 0 ? `+${formatPrice(i.gainAmount)} so'm` : 'Mos')}
+ </div>
+ </div>
+ <button type="button" class="item-remove" onclick="removeAuditItem('${i.productId}')" style="margin-left:6px;">${icon('x', 14)}</button>
+ </div>
+ `).join('');
+}
+
+function removeAuditItem(productId) {
+ APP.auditItems = (APP.auditItems || []).filter(i => i.productId !== productId);
+ renderAuditList();
+}
+
+function clearCurrentAudit() {
+ if (!APP.auditItems || APP.auditItems.length === 0) return;
+ if (!confirm('Sanoq ro\'yxatini tozalashni tasdiqlaysizmi?')) return;
+ APP.auditItems = [];
+ renderAuditList();
+}
+
+function scanForAudit() {
+ closeModal('auditModal');
+ showPage('scanner');
+ APP._scanForAudit = true;
+ showToast('Reviziya uchun shtrix-kodni kameraga ko\'rsating');
+ updateScanHint('Reviziya uchun shtrix-kod skanerlang...', 'success');
+}
+
+async function applyAuditResults() {
+ if (!APP.auditItems || APP.auditItems.length === 0) {
+ showToast('Sanoq ro\'yxati bo\'sh!', 'warning');
+ return;
+ }
+ const count = APP.auditItems.length;
+ const doConfirm = typeof window !== 'undefined' && typeof window.confirm === 'function' ? window.confirm : (typeof confirm === 'function' ? confirm : () => true);
+ if (!doConfirm(`Sanoq natijasida ${count} ta tovarning ombordagi qoldiqlari haqiqiy faktik sonlarga o'zgartiriladi. Tasdiqlaysizmi?`)) {
+ return;
+ }
+
+ for (const item of APP.auditItems) {
+ const prod = APP.products.find(p => p.id === item.productId);
+ if (prod) {
+ prod.stock = item.actualStock;
+ prod.trackStock = true;
+ prod.updatedAt = new Date().toISOString();
+ await saveProductToDB(prod);
+ }
+ }
+
+ await saveLocalData();
+ renderProducts();
+ updateProductStats();
+
+ APP.auditItems = [];
+ closeModal('auditModal');
+ showToast(`Ombor sanog'i muvaffaqiyatli yakunlandi! ${count} ta tovar qoldig'i to'g'rilandi.`, 'success');
+}
+
+// ─────────────────────────────────────────────
+// 1. EXPENSES MODULE (XARAJATLAR)
+// ─────────────────────────────────────────────
+async function saveExpense(expense) {
+ if (!expense) return;
+ if (!expense.id) expense.id = 'exp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+ if (!expense.date) expense.date = new Date().toISOString().slice(0, 10);
+ if (!expense.createdAt) expense.createdAt = new Date().toISOString();
+
+ APP.expenses = APP.expenses || [];
+ const existingIdx = APP.expenses.findIndex(e => e.id === expense.id);
+ if (existingIdx >= 0) {
+  APP.expenses[existingIdx] = expense;
+ } else {
+  APP.expenses.unshift(expense);
+ }
+
+ await ScanDB.set('scanpos_expenses', APP.expenses);
+ try {
+  localStorage.setItem('scanpos_expenses', JSON.stringify(APP.expenses));
+ } catch (e) {}
+
+ if (APP.currentPage === 'analytics') renderAnalytics();
+ return expense;
+}
+
+async function deleteExpense(id) {
+ if (!id) return;
+ APP.expenses = (APP.expenses || []).filter(e => e.id !== id);
+ await ScanDB.set('scanpos_expenses', APP.expenses);
+ try {
+  localStorage.setItem('scanpos_expenses', JSON.stringify(APP.expenses));
+ } catch (e) {}
+ renderExpensesList();
+ if (APP.currentPage === 'analytics') renderAnalytics();
+ showToast('Xarajat o\'chirildi');
+}
+
+function openExpensesModal() {
+ const dateInput = document.getElementById('expenseDate');
+ if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
+ const amountInput = document.getElementById('expenseAmount');
+ if (amountInput) amountInput.value = '';
+ const titleInput = document.getElementById('expenseTitle');
+ if (titleInput) titleInput.value = '';
+ const noteInput = document.getElementById('expenseNote');
+ if (noteInput) noteInput.value = '';
+ renderExpensesList();
+ openModal('expensesModal');
+}
+
+function renderExpensesList() {
+ const container = document.getElementById('expensesList');
+ if (!container) return;
+ const list = APP.expenses || [];
+ const total = list.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+ const sumEl = document.getElementById('expenseListSummary');
+ if (sumEl) sumEl.textContent = `Jami: ${formatPrice(total)} so'm`;
+
+ if (list.length === 0) {
+  container.innerHTML = `
+   <div class="empty-state" style="padding:16px;">
+    <p>Hozircha xarajat kiritilmagan</p>
+   </div>`;
+  return;
+ }
+
+ container.innerHTML = list.map(e => `
+  <div class="expense-item-row">
+   <div style="flex:1;min-width:0;">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+     <span class="expense-badge ${escHtml(e.category || 'boshqa')}">${escHtml(e.category || 'boshqa')}</span>
+     <span style="font-weight:700;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(e.title || 'Xarajat')}</span>
+    </div>
+    <div style="font-size:0.75rem;color:var(--text3);">${escHtml(e.date || '')} ${e.note ? '• ' + escHtml(e.note) : ''}</div>
+   </div>
+   <div style="display:flex;align-items:center;gap:8px;">
+    <span style="font-weight:800;font-size:0.9rem;color:#f59e0b;">${formatPrice(e.amount || 0)}</span>
+    <button type="button" class="btn-del" onclick="deleteExpense('${e.id}')" title="O'chirish" style="background:transparent;border:none;color:var(--danger);cursor:pointer;padding:4px;">${icon('trash', 14)}</button>
+   </div>
+  </div>
+ `).join('');
+}
+
+async function addExpenseFromModal() {
+ const category = document.getElementById('expenseCategory')?.value || 'boshqa';
+ const amount = parseFloat(document.getElementById('expenseAmount')?.value);
+ const title = document.getElementById('expenseTitle')?.value.trim();
+ const date = document.getElementById('expenseDate')?.value || new Date().toISOString().slice(0, 10);
+ const note = document.getElementById('expenseNote')?.value.trim() || '';
+
+ if (!title) {
+  showToast('Xarajat nomini kiriting', 'warning');
+  return;
+ }
+ if (!amount || amount <= 0) {
+  showToast('Xarajat summasini to\'g\'ri kiriting', 'warning');
+  return;
+ }
+
+ await saveExpense({
+  title,
+  category,
+  amount: Math.round(amount),
+  date,
+  note
+ });
+
+ document.getElementById('expenseTitle').value = '';
+ document.getElementById('expenseAmount').value = '';
+ document.getElementById('expenseNote').value = '';
+ renderExpensesList();
+ showToast('Xarajat muvaffaqiyatli saqlandi!');
+}
+
+// ─────────────────────────────────────────────
+// 2. PRICE HISTORY & BULK PRICE MODULE
+// ─────────────────────────────────────────────
+function renderProductPriceHistory(product) {
+ const group = document.getElementById('productPriceHistoryGroup');
+ const listEl = document.getElementById('productPriceHistoryList');
+ const countEl = document.getElementById('priceHistoryCount');
+ if (!group || !listEl) return;
+
+ if (!product || !Array.isArray(product.priceHistory) || product.priceHistory.length === 0) {
+  group.style.display = 'none';
+  return;
+ }
+
+ group.style.display = 'block';
+ if (countEl) countEl.textContent = `${product.priceHistory.length} ta`;
+
+ listEl.innerHTML = product.priceHistory.map(h => {
+  const d = h.date ? new Date(h.date).toLocaleDateString('uz', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '';
+  const oldP = h.oldPrice !== null && h.oldPrice !== undefined ? formatPriceShort(h.oldPrice) : '-';
+  const newP = formatPriceShort(h.newPrice);
+  return `
+   <div class="price-history-item">
+    <span class="price-history-date">${d} (${escHtml(h.note || 'O\'zgarish')}):</span>
+    <span class="price-history-diff">${oldP} -> ${newP} so'm</span>
+   </div>`;
+ }).join('');
+}
+
+function openBulkPriceModal() {
+ updateBulkPricePreview();
+ openModal('bulkPriceModal');
+}
+
+function setBulkPreset(val, type) {
+ const valInput = document.getElementById('bulkPriceValue');
+ const typeSelect = document.getElementById('bulkPriceType');
+ if (valInput) valInput.value = val;
+ if (typeSelect) typeSelect.value = type;
+ updateBulkPricePreview();
+}
+
+function updateBulkPricePreview() {
+ const cat = document.getElementById('bulkPriceCategory')?.value || 'all';
+ const target = document.getElementById('bulkPriceTarget')?.value || 'price';
+ const type = document.getElementById('bulkPriceType')?.value || 'percent';
+ const val = parseFloat(document.getElementById('bulkPriceValue')?.value) || 0;
+ const unitBadge = document.getElementById('bulkPriceUnitBadge');
+ if (unitBadge) unitBadge.textContent = type === 'percent' ? '%' : 'so\'m';
+
+ const prods = (APP.products || []).filter(p => cat === 'all' || p.category === cat);
+ const countEl = document.getElementById('bulkPreviewCount');
+ if (countEl) countEl.textContent = `${prods.length} ta tovar`;
+
+ const exEl = document.getElementById('bulkPreviewExample');
+ if (!exEl) return;
+
+ if (prods.length === 0 || val === 0) {
+  exEl.textContent = '-';
+  return;
+ }
+
+ const sample = prods[0];
+ const oldVal = target === 'costPrice' ? (sample.costPrice || sample.price) : sample.price;
+ let newVal = oldVal;
+ if (type === 'percent') {
+  newVal = Math.round(oldVal * (1 + val / 100));
+ } else {
+  newVal = Math.round(oldVal + val);
+ }
+ newVal = Math.max(0, newVal);
+ exEl.textContent = `${sample.name}: ${formatPriceShort(oldVal)} -> ${formatPriceShort(newVal)} so'm`;
+}
+
+async function applyBulkPriceUpdate() {
+ const cat = document.getElementById('bulkPriceCategory')?.value || 'all';
+ const target = document.getElementById('bulkPriceTarget')?.value || 'price';
+ const type = document.getElementById('bulkPriceType')?.value || 'percent';
+ const val = parseFloat(document.getElementById('bulkPriceValue')?.value) || 0;
+
+ if (!val || val === 0) {
+  showToast('O\'zgartirish qiymatini kiriting', 'warning');
+  return;
+ }
+
+ const prods = (APP.products || []).filter(p => cat === 'all' || p.category === cat);
+ if (prods.length === 0) {
+  showToast('Mos keladigan tovarlar topilmadi', 'warning');
+  return;
+ }
+
+ const doConfirm = typeof window !== 'undefined' && typeof window.confirm === 'function' ? window.confirm : (typeof confirm === 'function' ? confirm : () => true);
+ const targetLabel = target === 'costPrice' ? 'tannarxi' : 'sotish narxi';
+ const changeDesc = type === 'percent' ? `${val > 0 ? '+' : ''}${val}%` : `${val > 0 ? '+' : ''}${val} so'm`;
+ if (!doConfirm(`${prods.length} ta mahsulotning ${targetLabel} ${changeDesc} ga o'zgartirilsinmi?`)) {
+  return;
+ }
+
+ let updatedCount = 0;
+ for (const p of prods) {
+  p.priceHistory = Array.isArray(p.priceHistory) ? p.priceHistory : [];
+  const oldPrice = p.price;
+  const oldCost = p.costPrice || null;
+
+  if (target === 'costPrice') {
+   const curCost = p.costPrice || p.price;
+   let newCost = type === 'percent' ? Math.round(curCost * (1 + val / 100)) : Math.round(curCost + val);
+   newCost = Math.max(0, newCost);
+   p.costPrice = newCost;
+   p.priceHistory.unshift({
+    date: new Date().toISOString(),
+    oldPrice,
+    newPrice: p.price,
+    oldCostPrice: oldCost,
+    newCostPrice: newCost,
+    note: `Ommaviy tannarx (${changeDesc})`
+   });
+  } else {
+   let newPrice = type === 'percent' ? Math.round(p.price * (1 + val / 100)) : Math.round(p.price + val);
+   newPrice = Math.max(0, newPrice);
+   p.price = newPrice;
+   p.priceHistory.unshift({
+    date: new Date().toISOString(),
+    oldPrice,
+    newPrice,
+    oldCostPrice: oldCost,
+    newCostPrice: p.costPrice || null,
+    note: `Ommaviy narx (${changeDesc})`
+   });
+  }
+
+  if (p.priceHistory.length > 30) p.priceHistory.pop();
+  p.updatedAt = new Date().toISOString();
+  await saveProductToDB(p);
+  updatedCount++;
+ }
+
+ await saveLocalData();
+ renderProducts();
+ closeModal('bulkPriceModal');
+ showToast(`${updatedCount} ta tovar narxi yangilandi!`, 'success');
+}
+
+// ─────────────────────────────────────────────
+// 3. BARCODE GENERATION & LABEL PRINT MODULE
+// ─────────────────────────────────────────────
+function generateProductBarcode() {
+ const seed = String(Date.now()).slice(-9) + String(Math.floor(Math.random() * 10));
+ const raw12 = '20' + seed;
+ let sum = 0;
+ for (let i = 0; i < 12; i++) {
+  const digit = parseInt(raw12[i], 10);
+  sum += (i % 2 === 0) ? digit : digit * 3;
+ }
+ const checksum = (10 - (sum % 10)) % 10;
+ return raw12 + checksum;
+}
+
+function generateAndSetBarcode() {
+ const input = document.getElementById('productBarcode');
+ if (input) {
+  const code = generateProductBarcode();
+  input.value = code;
+  showToast(`Yangi shtrix-kod: ${code}`);
+ }
+}
+
+function drawBarcodeToCanvas(canvas, code) {
+ if (!canvas || !code) return;
+ const ctx = canvas.getContext('2d');
+ if (!ctx) return;
+
+ const str = String(code).trim();
+ const width = canvas.width;
+ const height = canvas.height;
+
+ ctx.fillStyle = '#ffffff';
+ ctx.fillRect(0, 0, width, height);
+
+ let hash = 0;
+ for (let i = 0; i < str.length; i++) {
+  hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+ }
+
+ const quietZone = 12;
+ const usableWidth = width - (quietZone * 2);
+ const barCount = 65;
+ const barWidth = usableWidth / barCount;
+
+ ctx.fillStyle = '#000000';
+
+ // Start guard
+ ctx.fillRect(quietZone, 5, barWidth * 1.5, height - 10);
+ ctx.fillRect(quietZone + barWidth * 2.5, 5, barWidth, height - 10);
+
+ // Content bars
+ let seed = hash ^ 0x5a5a5a5a;
+ for (let b = 5; b < barCount - 5; b++) {
+  seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+  const isDark = (seed % 3) !== 0;
+  if (isDark) {
+   const x = quietZone + (b * barWidth);
+   const w = (seed % 5 === 0) ? barWidth * 1.8 : barWidth;
+   ctx.fillRect(x, 5, w, height - 10);
+  }
+ }
+
+ // End guard
+ ctx.fillRect(quietZone + (barCount - 4) * barWidth, 5, barWidth, height - 10);
+ ctx.fillRect(quietZone + (barCount - 2) * barWidth, 5, barWidth * 1.5, height - 10);
+}
+
+function openPrintLabelModal(productId) {
+ const p = APP.products.find(item => item.id === productId);
+ if (!p) {
+  showToast('Mahsulot topilmadi', 'warning');
+  return;
+ }
+
+ const shopNameEl = document.getElementById('labelShopName');
+ if (shopNameEl) shopNameEl.textContent = APP.settings?.shopName || 'ScanPOS Do\'koni';
+
+ const nameEl = document.getElementById('labelProductName');
+ if (nameEl) nameEl.textContent = p.name;
+
+ const priceEl = document.getElementById('labelProductPrice');
+ if (priceEl) priceEl.textContent = `${formatPrice(p.price)}`;
+
+ const barcodeTextEl = document.getElementById('labelBarcodeText');
+ if (barcodeTextEl) barcodeTextEl.textContent = p.barcode || '';
+
+ const dateTextEl = document.getElementById('labelDateText');
+ if (dateTextEl) {
+  const todayStr = new Date().toLocaleDateString('uz', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  dateTextEl.textContent = `${todayStr}${p.expiryDate ? ' | Yaroqlilik: ' + p.expiryDate : ''}`;
+ }
+
+ const canvas = document.getElementById('barcodeCanvas');
+ if (canvas) {
+  drawBarcodeToCanvas(canvas, p.barcode || '200000000000');
+ }
+
+ openModal('printLabelModal');
+}
+
+function printCurrentModalProductLabel() {
+ if (APP.editingProductId) {
+  openPrintLabelModal(APP.editingProductId);
+ }
+}
+
+function printBarcodeLabel() {
+ if (typeof window !== 'undefined' && typeof window.print === 'function') {
+  window.print();
+ } else {
+  showToast('Chop etish rejimi tayyorlandi');
+ }
+}
+
+// ─────────────────────────────────────────────
+// 4. I18N / MULTI-LANGUAGE MODULE (UZ / RU)
+// ─────────────────────────────────────────────
+const I18N = {
+ uz: {
+  nav_scanner: 'Skaner',
+  nav_products: 'Mahsulotlar',
+  nav_bills: 'Cheklar',
+  nav_analytics: 'Hisobot',
+  nav_nasiya: 'Nasiya',
+  nav_settings: 'Sozlamalar',
+  cart_title: 'Savat',
+  cart_empty: 'Savat bo\'sh',
+  cart_total: 'Jami:',
+  btn_checkout: 'To\'lov',
+  btn_clear: 'Tozalash',
+  btn_hold: 'Kutish',
+  btn_save: 'Saqlash',
+  btn_cancel: 'Bekor qilish',
+  btn_delete: 'O\'chirish',
+  btn_edit: 'Tahrirlash',
+  btn_add_product: 'Yangi tovar',
+  btn_supply: 'Kirim',
+  btn_audit: 'Reviziya',
+  btn_import: 'Import',
+  btn_bulk_price: 'Narxlar',
+  btn_expenses: 'Xarajatlar',
+  btn_print_label: 'Yorliq',
+  btn_print: 'Chop etish',
+  product_name: 'Mahsulot nomi',
+  product_price: 'Sotish narxi',
+  product_cost: 'Kelish narxi (tannarx)',
+  product_stock: 'Ombordagi miqdor',
+  product_expiry: 'Yaroqlilik muddati',
+  toast_saved: 'Muvaffaqiyatli saqlandi',
+ },
+ ru: {
+  nav_scanner: 'Сканер',
+  nav_products: 'Товары',
+  nav_bills: 'Чеки',
+  nav_analytics: 'Отчёты',
+  nav_nasiya: 'Долги',
+  nav_settings: 'Настройки',
+  cart_title: 'Корзина',
+  cart_empty: 'Корзина пуста',
+  cart_total: 'Итого:',
+  btn_checkout: 'Оплата',
+  btn_clear: 'Очистить',
+  btn_hold: 'Отложить',
+  btn_save: 'Сохранить',
+  btn_cancel: 'Отмена',
+  btn_delete: 'Удалить',
+  btn_edit: 'Изменить',
+  btn_add_product: 'Новый товар',
+  btn_supply: 'Приход',
+  btn_audit: 'Ревизия',
+  btn_import: 'Импорт',
+  btn_bulk_price: 'Цены',
+  btn_expenses: 'Расходы',
+  btn_print_label: 'Ценник',
+  btn_print: 'Печать',
+  product_name: 'Название товара',
+  product_price: 'Цена продажи',
+  product_cost: 'Себестоимость',
+  product_stock: 'Остаток на складе',
+  product_expiry: 'Срок годности',
+  toast_saved: 'Успешно сохранено',
+ }
+};
+
+function t(key, fallback = '') {
+ const lang = APP.settings?.lang || 'uz';
+ if (I18N[lang] && I18N[lang][key]) return I18N[lang][key];
+ if (I18N.uz && I18N.uz[key]) return I18N.uz[key];
+ return fallback || key;
+}
+
+function changeLanguage(lang) {
+ if (lang !== 'uz' && lang !== 'ru') lang = 'uz';
+ APP.settings = APP.settings || {};
+ APP.settings.lang = lang;
+ const sel = document.getElementById('settingsLangSelect');
+ if (sel) sel.value = lang;
+ applyLanguage();
+ saveSettings();
+ showToast(lang === 'ru' ? 'Язык изменён: Русский' : 'Til o\'zgartirildi: O\'zbekcha');
+}
+
+function toggleLanguage() {
+ const cur = APP.settings?.lang || 'uz';
+ const next = cur === 'ru' ? 'uz' : 'ru';
+ changeLanguage(next);
+}
+
+function applyLanguage() {
+ const lang = APP.settings?.lang || 'uz';
+
+ const btnToggle = document.getElementById('langToggleBtn');
+ if (btnToggle) btnToggle.textContent = lang === 'ru' ? 'RU' : 'UZ';
+
+ const sel = document.getElementById('settingsLangSelect');
+ if (sel) sel.value = lang;
+
+ document.querySelectorAll('[data-i18n]').forEach(el => {
+  const k = el.getAttribute('data-i18n');
+  if (k && I18N[lang] && I18N[lang][k]) {
+   el.textContent = I18N[lang][k];
+  }
+ });
+
+ document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+  const k = el.getAttribute('data-i18n-ph');
+  if (k && I18N[lang] && I18N[lang][k]) {
+   el.placeholder = I18N[lang][k];
+  }
+ });
+}
+
 // Global oynaga yangi modullar funksiyalarini biriktirish
 window.calcTotals = calcTotals;
 window.openRefundModal = openRefundModal;
@@ -4918,3 +6474,59 @@ window.listenFirestoreDebts = listenFirestoreDebts;
 window.renderDebtors = renderDebtors;
 window.updateNasiyaStats = updateNasiyaStats;
 window.updateScanHint = updateScanHint;
+window.openSupplyModal = openSupplyModal;
+window.onSupplySearch = onSupplySearch;
+window.selectSupplyProductById = selectSupplyProductById;
+window.selectSupplyProduct = selectSupplyProduct;
+window.scanForSupply = scanForSupply;
+window.submitSupply = submitSupply;
+window.openImportCSVModal = openImportCSVModal;
+window.downloadCSVTemplate = downloadCSVTemplate;
+window.parseCSV = parseCSV;
+window.handleCSVFileSelect = handleCSVFileSelect;
+window.parseCSVFromText = parseCSVFromText;
+window.executeCSVImport = executeCSVImport;
+window.holdCurrentCart = holdCurrentCart;
+window.openHeldCartsModal = openHeldCartsModal;
+window.renderHeldCartsList = renderHeldCartsList;
+window.restoreHeldCart = restoreHeldCart;
+window.deleteHeldCart = deleteHeldCart;
+window.clearAllHeldCarts = clearAllHeldCarts;
+window.setCartQty = setCartQty;
+window.openAuditModal = openAuditModal;
+window.onAuditSearch = onAuditSearch;
+window.selectAuditProductById = selectAuditProductById;
+window.selectAuditProduct = selectAuditProduct;
+window.calcAuditItemDiff = calcAuditItemDiff;
+window.commitAuditActiveItem = commitAuditActiveItem;
+window.renderAuditList = renderAuditList;
+window.removeAuditItem = removeAuditItem;
+window.clearCurrentAudit = clearCurrentAudit;
+window.scanForAudit = scanForAudit;
+window.applyAuditResults = applyAuditResults;
+
+// Yangi 5 ta imkoniyat eksportlari
+window.getExpiryStatus = getExpiryStatus;
+window.getExpiringProducts = getExpiringProducts;
+window.toggleExpiringFilter = toggleExpiringFilter;
+window.saveExpense = saveExpense;
+window.deleteExpense = deleteExpense;
+window.openExpensesModal = openExpensesModal;
+window.renderExpensesList = renderExpensesList;
+window.addExpenseFromModal = addExpenseFromModal;
+window.renderProductPriceHistory = renderProductPriceHistory;
+window.openBulkPriceModal = openBulkPriceModal;
+window.setBulkPreset = setBulkPreset;
+window.updateBulkPricePreview = updateBulkPricePreview;
+window.applyBulkPriceUpdate = applyBulkPriceUpdate;
+window.generateProductBarcode = generateProductBarcode;
+window.generateAndSetBarcode = generateAndSetBarcode;
+window.drawBarcodeToCanvas = drawBarcodeToCanvas;
+window.openPrintLabelModal = openPrintLabelModal;
+window.printCurrentModalProductLabel = printCurrentModalProductLabel;
+window.printBarcodeLabel = printBarcodeLabel;
+window.I18N = I18N;
+window.t = t;
+window.changeLanguage = changeLanguage;
+window.toggleLanguage = toggleLanguage;
+window.applyLanguage = applyLanguage;

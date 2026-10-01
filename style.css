@@ -186,6 +186,8 @@ body {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   z-index: 10;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .brand-logo {
@@ -202,7 +204,10 @@ body {
 .nav-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .nav-btn {
@@ -1236,7 +1241,7 @@ body {
 
 /* ====== PRODUCT GRID ====== */
 .product-grid {
-  padding: 0 14px 14px;
+  padding: 0 14px 80px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1262,6 +1267,7 @@ body {
 .product-emoji {
   font-size: 2rem;
   flex-shrink: 0;
+  line-height: 1;
 }
 
 .product-card-info {
@@ -1370,7 +1376,7 @@ body {
 /* ====== BILLS ====== */
 .bills-list {
   list-style: none;
-  padding: 0 14px;
+  padding: 0 14px 80px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2786,50 +2792,495 @@ textarea {
   cursor: pointer;
 }
 
-/* Small phone media query (<380px, e.g. iPhone SE, smaller Android phones) */
+/* =====================================================
+   RESPONSIVE BREAKPOINTS – BARCHA TELEFONLAR UCHUN
+   ===================================================== */
+
+/* ── Barcha qurilmalarda umumiy tuzatmalar ── */
+@media (max-width: 520px) {
+  /* Top nav: kichik ekranlarda badge larni yashir */
+  #localModeBadge {
+    display: none !important;
+  }
+  .outbox-badge {
+    font-size: 0.62rem;
+    padding: 2px 6px;
+  }
+  /* Nav buttons slightly smaller */
+  .nav-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+  /* Page header buttons compact */
+  .page-header {
+    padding: 12px 14px 10px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .page-header h2 {
+    font-size: 1.05rem;
+  }
+  /* Cart item tight */
+  .cart-item {
+    padding: 9px 10px;
+    gap: 8px;
+  }
+  .item-name {
+    font-size: 0.82rem;
+  }
+  /* Checkout button */
+  .checkout-btn {
+    padding: 12px 14px;
+    font-size: 0.92rem;
+  }
+  /* Modal body padding */
+  .modal-body {
+    padding: 14px 16px;
+  }
+  .modal-footer {
+    padding: 10px 16px max(16px, env(safe-area-inset-bottom, 0px));
+  }
+  /* Checkout amount smaller */
+  .checkout-amount {
+    font-size: 1.65rem;
+  }
+  /* Analytics stats */
+  .analytics-stats {
+    gap: 8px;
+    padding: 0 14px 12px;
+  }
+  .an-stat-card {
+    padding: 12px 10px;
+    gap: 8px;
+  }
+  .an-stat-val {
+    font-size: 0.92rem;
+  }
+  .an-stat-label {
+    font-size: 0.65rem;
+  }
+  .an-stat-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  /* Chart cards */
+  .an-chart-card {
+    margin: 0 14px 10px;
+    padding: 12px;
+  }
+  .an-two-col {
+    padding: 0 14px 10px;
+  }
+  /* Settings */
+  .settings-section {
+    padding: 4px 12px 80px;
+  }
+  /* Product page header buttons wrap */
+  .page-header > div:last-child {
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  /* Bills list */
+  .bills-list {
+    padding: 0 12px 80px;
+  }
+  /* Debtor list */
+  .debtor-list {
+    padding: 4px 10px 90px;
+  }
+  /* nasiya summary */
+  .nasiya-summary {
+    padding: 10px 12px 4px;
+    gap: 8px;
+  }
+  /* product grid */
+  .product-grid {
+    padding: 0 12px 80px;
+  }
+  /* scan success overlay */
+  .scan-success-overlay {
+    width: calc(100% - 20px);
+  }
+}
+
+/* ── iPhone 14 Pro Max, Samsung S24 Ultra (≤430px) ── */
+@media (max-width: 430px) {
+  /* Top nav network badge shorter */
+  #networkStatusBadge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+  }
+  /* quick items hint hide */
+  .quick-hint-text {
+    display: none;
+  }
+  /* Cart qty input slightly smaller */
+  .cart-qty-input {
+    width: 52px;
+    font-size: 0.82rem;
+  }
+  /* qty buttons */
+  .qty-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 0.95rem;
+  }
+  /* item remove */
+  .item-remove {
+    width: 24px;
+    height: 24px;
+  }
+  /* product card actions */
+  .product-card-actions {
+    gap: 5px;
+  }
+  .btn-edit, .btn-del {
+    width: 28px;
+    height: 28px;
+  }
+  /* page header product buttons */
+  .btn-secondary.btn-sm {
+    padding: 5px 10px;
+    font-size: 0.74rem;
+  }
+  /* stat cards in products/bills page */
+  .stat-card {
+    padding: 10px 8px;
+  }
+  .stat-num {
+    font-size: 0.95rem;
+  }
+  .stat-label {
+    font-size: 0.65rem;
+  }
+  /* Quick items */
+  .quick-items-section {
+    padding: 8px 12px;
+  }
+  .quick-item-card {
+    min-width: 84px;
+    padding: 7px 8px;
+  }
+  .quick-item-emoji {
+    font-size: 1.2rem;
+  }
+  .quick-item-name {
+    font-size: 0.73rem;
+  }
+  .quick-item-price {
+    font-size: 0.68rem;
+  }
+  /* payment methods grid */
+  .payment-method {
+    font-size: 0.75rem;
+    padding: 9px 4px;
+  }
+  /* modal header */
+  .modal-header {
+    padding: 10px 16px;
+  }
+  .modal-header h3 {
+    font-size: 0.92rem;
+  }
+  /* bill items */
+  .bill-total {
+    font-size: 0.92rem;
+  }
+  .bill-date {
+    font-size: 0.75rem;
+  }
+}
+
+/* ── iPhone SE 3rd gen, Galaxy A04 (≤380px) ── */
 @media (max-width: 380px) {
+  /* bottom nav */
   .bnav-btn span {
-    font-size: 0.6rem;
+    font-size: 0.58rem;
   }
   .bnav-btn svg {
     width: 20px;
     height: 20px;
   }
-  .brand-logo span {
-    font-size: 0.95rem;
+  .bnav-btn {
+    gap: 2px;
+    padding: 4px 2px;
   }
+  /* brand logo */
+  .brand-logo span {
+    font-size: 0.9rem;
+  }
+  /* network badge hide completely on very small */
+  #networkStatusBadge {
+    display: none;
+  }
+  #demoTag {
+    font-size: 0.58rem;
+    padding: 2px 6px;
+  }
+  /* product cards */
   .product-card {
-    padding: 10px;
+    padding: 9px 10px;
     gap: 8px;
   }
   .product-card-thumb {
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
   }
   .product-card-name {
-    font-size: 0.84rem;
+    font-size: 0.82rem;
   }
+  .product-card-price {
+    font-size: 0.78rem;
+  }
+  .product-card-stock {
+    font-size: 0.65rem;
+    padding: 1px 5px;
+  }
+  /* cart header */
+  .cart-header {
+    padding: 8px 12px 5px;
+  }
+  .cart-header h2 {
+    font-size: 0.92rem;
+  }
+  /* cart footer */
+  .cart-footer {
+    padding: 8px 12px max(8px, env(safe-area-inset-bottom, 0px));
+  }
+  .total-row {
+    font-size: 0.78rem;
+  }
+  .total-row.grand {
+    font-size: 0.92rem;
+  }
+  .grand-total-text {
+    font-size: 1rem;
+  }
+  .checkout-btn {
+    padding: 11px 12px;
+    font-size: 0.86rem;
+    gap: 6px;
+  }
+  /* analytics */
   .analytics-stats {
-    gap: 8px;
-    padding: 0 12px 10px;
+    gap: 7px;
+    padding: 0 10px 10px;
   }
   .an-stat-card {
     padding: 10px 8px;
+    gap: 6px;
   }
   .an-stat-val {
-    font-size: 0.88rem;
+    font-size: 0.85rem;
+  }
+  .an-stat-label {
+    font-size: 0.63rem;
+  }
+  .an-stat-icon svg {
+    width: 18px;
+    height: 18px;
   }
   .an-chart-card {
-    margin: 0 12px 10px;
+    margin: 0 10px 10px;
     padding: 10px;
   }
   .an-two-col {
-    padding: 0 12px 10px;
+    padding: 0 10px 10px;
   }
+  .an-chart-wrap {
+    height: 140px;
+  }
+  /* settings */
   .settings-section {
     padding: 4px 10px 80px;
   }
+  .settings-item {
+    padding: 11px 12px;
+  }
+  /* search bar */
+  .search-bar {
+    margin: 0 10px 10px;
+    padding: 9px 12px;
+  }
+  /* product stats */
+  .product-stats, .bills-summary {
+    gap: 7px;
+    padding: 0 10px 12px;
+  }
+  /* modal */
+  .modal-body {
+    padding: 12px 14px;
+  }
+  .modal-footer {
+    gap: 8px;
+    padding: 10px 14px max(14px, env(safe-area-inset-bottom, 0px));
+  }
+  .checkout-amount {
+    font-size: 1.45rem;
+  }
+  /* empty states */
+  .empty-cart {
+    padding: 28px 16px;
+  }
+  /* page header */
+  .page-header {
+    padding: 10px 12px 8px;
+  }
+  /* nasiya */
+  .nasiya-summary {
+    padding: 8px 10px 4px;
+    gap: 6px;
+  }
+  .debtor-card-main {
+    padding: 11px;
+    gap: 10px;
+  }
+  .debtor-avatar {
+    width: 38px;
+    height: 38px;
+    font-size: 1rem;
+  }
+  .debtor-name {
+    font-size: 0.88rem;
+  }
+  .debtor-balance-val {
+    font-size: 0.86rem;
+  }
+  /* form */
+  .form-group {
+    margin-bottom: 11px;
+  }
+  /* btn sizes */
+  .btn-primary, .btn-secondary, .btn-success, .btn-danger {
+    padding: 10px 14px;
+    font-size: 0.86rem;
+  }
+  .hold-cart-btn {
+    padding: 5px 10px;
+    font-size: 0.7rem;
+  }
+  .clear-cart-btn {
+    padding: 4px 10px;
+    font-size: 0.7rem;
+  }
+  .btn-hold-badge {
+    padding: 3px 8px;
+    font-size: 0.7rem;
+  }
 }
+
+/* ── Ultra kichik (≤360px, Galaxy A03, Moto E-series) ── */
+@media (max-width: 360px) {
+  /* hide brand text on very tiny screens */
+  .brand-logo span {
+    display: none;
+  }
+  /* nav even more compact */
+  .top-nav {
+    padding: 8px 10px;
+  }
+  .nav-btn {
+    width: 30px;
+    height: 30px;
+  }
+  /* bnav */
+  .bnav-btn span {
+    display: none;
+  }
+  .bnav-btn {
+    min-height: 44px;
+  }
+  .bottom-nav {
+    min-height: calc(48px + env(safe-area-inset-bottom, 0px));
+  }
+  /* scanner */
+  .scanner-wrapper {
+    height: clamp(160px, 28dvh, 220px);
+  }
+  /* quick items even more compact */
+  .quick-item-card {
+    min-width: 78px;
+    padding: 6px 7px;
+  }
+  /* checkout amount */
+  .checkout-amount {
+    font-size: 1.3rem;
+  }
+  /* payment methods: stack */
+  .payment-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .payment-method {
+    min-width: calc(50% - 4px);
+    flex: 0 0 calc(50% - 4px);
+    font-size: 0.72rem;
+    padding: 8px 4px;
+  }
+  /* product card very compact */
+  .product-card {
+    padding: 8px;
+    gap: 7px;
+  }
+  .product-card-thumb {
+    width: 36px;
+    height: 36px;
+  }
+  .product-emoji {
+    font-size: 1.6rem;
+  }
+  /* bill item */
+  .bill-item {
+    padding: 10px;
+  }
+  .bill-total {
+    font-size: 0.85rem;
+  }
+  /* stat cards */
+  .stat-num {
+    font-size: 0.9rem;
+  }
+  .stat-label {
+    font-size: 0.62rem;
+  }
+  /* form groups */
+  .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
+  /* modals */
+  .modal-header h3 {
+    font-size: 0.86rem;
+  }
+  .modal-body {
+    padding: 10px 12px;
+  }
+}
+
+/* ── Landscape orientation fix (short screen height) ── */
+@media (max-height: 600px) and (orientation: landscape) {
+  .scanner-wrapper {
+    height: clamp(120px, 22dvh, 160px);
+  }
+  .quick-items-section {
+    display: none;
+  }
+  .modal {
+    max-height: calc(96dvh - env(safe-area-inset-top, 0px));
+  }
+  .an-chart-wrap {
+    height: 120px;
+  }
+  .an-chart-wrap--sm {
+    height: 100px;
+  }
+  .bottom-nav {
+    min-height: calc(48px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 
 /* =============================================
    NASIYA DAFTAR
@@ -3109,4 +3560,214 @@ textarea {
   width: 26px;
   height: 26px;
   color: var(--text2);
+}
+/* ====== 5 NEW FEATURES STYLES ====== */
+
+/* Hold Cart & Cart Qty Input */
+.btn-hold-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 20px;
+  background: var(--yellow);
+  color: #000;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s;
+}
+.btn-hold-badge:active {
+  transform: scale(0.96);
+}
+
+.hold-cart-btn {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 8px;
+  background: var(--bg3);
+  color: var(--yellow);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.hold-cart-btn:hover {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: var(--yellow);
+}
+
+.cart-qty-input {
+  width: 58px;
+  text-align: center;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 4px 2px;
+}
+.cart-qty-input:focus {
+  border-color: var(--purple);
+  outline: none;
+}
+
+/* Supply Dropdown Search */
+.supply-search-dropdown {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.supply-search-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.15s;
+}
+.supply-search-item:last-child {
+  border-bottom: none;
+}
+.supply-search-item:hover {
+  background: var(--bg3);
+}
+.supply-search-item-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.supply-search-item-meta {
+  font-size: 0.75rem;
+  color: var(--text3);
+}
+
+/* Audit Item & Held Cart Cards */
+.audit-item-card, .held-cart-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.held-cart-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* Expiry Date Badges */
+.badge-expiry {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.badge-expiry.expired {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+.badge-expiry.warning {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.badge-expiry.ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+/* Price History List */
+.price-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 140px;
+  overflow-y: auto;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+}
+.price-history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: var(--bg3);
+}
+.price-history-date {
+  color: var(--text3);
+  font-size: 0.72rem;
+}
+.price-history-diff {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* Expenses List */
+.expenses-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.expense-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.expense-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.expense-badge.ijara { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+.expense-badge.maosh { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.expense-badge.svet { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+.expense-badge.transport { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+.expense-badge.boshqa { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+
+/* Print Label and Print Media */
+.printable-label-card {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printableLabelCard, #printableLabelCard * {
+    visibility: visible;
+  }
+  #printableLabelCard {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 58mm !important;
+    max-width: 58mm !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 2mm !important;
+    margin: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
 }
