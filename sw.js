@@ -1,5 +1,5 @@
 // ScanPOS Service Worker (Offline Cache)
-const CACHE_NAME = 'scanpos-v3';
+const CACHE_NAME = 'scanpos-v4';
 const LOCAL_ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,9 @@ const LOCAL_ASSETS = [
   './style.css',
   './logo.png',
   './logo.svg',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-512-maskable.png',
   './manifest.json'
 ];
 const CDN_ASSETS = [
@@ -39,6 +42,12 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (e) => {
   // Faqat GET so'rovlari
   if (e.request.method !== 'GET') return;
@@ -50,7 +59,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // HTML va JS fayllar uchun Network-First (yangilanishlar darhol yetib borishi uchun)
+  // 1. HTML va JS fayllar uchun Network-First (yangilanishlar darhol yetib borishi uchun)
   const isCodeAsset = e.request.mode === 'navigate' ||
                       url.pathname.endsWith('.html') ||
                       url.pathname.endsWith('.js') ||
@@ -66,12 +75,47 @@ self.addEventListener('fetch', (e) => {
           }
           return res;
         })
-        .catch(() => caches.match(e.request))
+        .catch(async () => {
+          const cached = await caches.match(e.request);
+          if (cached) return cached;
+          return new Response('Internetga ulanish mavjud emas', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+          });
+        })
     );
     return;
   }
 
-  // Boshqa resurslar (CSS, rasmlar, fontlar, CDN kutubxonalari) uchun Cache-First
+  // 2. CSS fayllar uchun Stale-While-Revalidate (keshdan tez beriladi, fonda yangilanadi)
+  const isCssAsset = url.pathname.endsWith('.css');
+  if (isCssAsset) {
+    e.respondWith(
+      caches.match(e.request).then((cached) => {
+        const fetchPromise = fetch(e.request).then((networkResponse) => {
+          if (networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          }
+          return networkResponse;
+        }).catch(() => null);
+
+        if (cached) return cached;
+        return fetchPromise.then(res => {
+          if (res) return res;
+          return new Response('/* Offline fallback */', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'text/css; charset=utf-8' }
+          });
+        });
+      })
+    );
+    return;
+  }
+
+  // 3. Boshqa resurslar (rasmlar, fontlar, CDN kutubxonalari) uchun Cache-First
   e.respondWith(
     caches.match(e.request).then((cached) => {
       if (cached) return cached;
@@ -81,6 +125,12 @@ self.addEventListener('fetch', (e) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
         }
         return res;
+      }).catch(() => {
+        return new Response('Resurs topilmadi', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        });
       });
     })
   );

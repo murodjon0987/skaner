@@ -236,6 +236,62 @@ body {
   letter-spacing: 0.5px;
 }
 
+.network-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.network-badge.online {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+.network-badge.offline {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.outbox-badge {
+  background: rgba(6, 182, 212, 0.2);
+  color: #06b6d4;
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 99px;
+}
+.outbox-badge.hidden {
+  display: none !important;
+}
+
+.sw-update-banner {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg3);
+  border: 1px solid var(--purple);
+  box-shadow: 0 4px 20px rgba(168, 85, 247, 0.35);
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: 99px;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  animation: slideDown 0.3s ease;
+}
+.sw-update-banner.hidden {
+  display: none !important;
+}
+
 /* ====== PAGES ====== */
 .pages {
   flex: 1;
