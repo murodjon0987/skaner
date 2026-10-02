@@ -1081,6 +1081,8 @@ function renderUserMenu() {
    const emailEl = document.getElementById('userMenuEmail');
    if (nameEl) nameEl.textContent = name;
    if (emailEl) emailEl.textContent = email;
+   const adminBtn = document.getElementById('adminMenuBtn');
+   if (adminBtn) adminBtn.classList.toggle('hidden', !isAdminUser(user));
   }
  }
  renderSettingsProfile();
@@ -1381,6 +1383,171 @@ async function submitPaymentRequest() {
  } catch (e) {
   console.error('paymentRequest xato:', e);
   showToast("So'rov yuborilmadi. Internetni tekshiring.", 'error');
+ }
+}
+
+// ─────────────────────────────────────────────
+// ADMIN PANEL
+// ─────────────────────────────────────────────
+let _adminTab = 'users';
+let _adminUsers = [];
+let _adminRequests = [];
+
+function openAdminPanel() {
+ if (!isAdminUser()) { showToast("Ruxsat yo'q", 'error'); return; }
+ const dd = document.getElementById('userMenuDropdown');
+ if (dd) dd.classList.add('hidden');
+ adminSetTab('users');
+ openModal('adminModal');
+ adminLoadData();
+}
+
+function adminSetTab(tab) {
+ _adminTab = tab === 'requests' ? 'requests' : 'users';
+ document.getElementById('adminTabUsers')?.classList.toggle('active', _adminTab === 'users');
+ document.getElementById('adminTabRequests')?.classList.toggle('active', _adminTab === 'requests');
+ document.getElementById('adminUsersList')?.classList.toggle('hidden', _adminTab !== 'users');
+ document.getElementById('adminRequestsList')?.classList.toggle('hidden', _adminTab !== 'requests');
+}
+
+async function adminLoadData() {
+ const loading = document.getElementById('adminLoading');
+ if (loading) loading.style.display = 'flex';
+ try {
+  if (window.useDemo || !window.firebaseDB || !window.firebaseFns) {
+   _adminUsers = []; _adminRequests = [];
+  } else {
+   const { collection, getDocs } = window.firebaseFns;
+   const us = await getDocs(collection(window.firebaseDB, 'users'));
+   _adminUsers = us.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => new Date(b.lastLoginAt || b.createdAt || 0) - new Date(a.lastLoginAt || a.createdAt || 0));
+   const rs = await getDocs(collection(window.firebaseDB, 'paymentRequests'));
+   _adminRequests = rs.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  }
+ } catch (e) {
+  console.warn('admin yuklash xato:', e);
+  showToast("Ma'lumot yuklanmadi (rules/ruxsat).", 'error');
+ }
+ if (loading) loading.style.display = 'none';
+ renderAdminMetrics();
+ renderAdminUsers();
+ renderAdminRequests();
+}
+
+function renderAdminMetrics() {
+ const el = document.getElementById('adminMetrics');
+ if (!el) return;
+ const active = _adminUsers.filter(u => {
+  const s = u.subscription || {};
+  return s.status === 'active' && s.expiresAt && new Date(s.expiresAt) > new Date();
+ }).length;
+ const pending = _adminRequests.filter(r => r.status === 'pending').length;
+ const revenue = _adminRequests.filter(r => r.status === 'approved').reduce((s, r) => s + (Number(r.amount) || 0), 0);
+ el.innerHTML = `
+  <div class="admin-metric"><div class="admin-metric-val">${_adminUsers.length}</div><div class="admin-metric-label">Foydalanuvchi</div></div>
+  <div class="admin-metric"><div class="admin-metric-val">${active}</div><div class="admin-metric-label">Faol obuna</div></div>
+  <div class="admin-metric"><div class="admin-metric-val">${pending}</div><div class="admin-metric-label">Kutilayotgan so'rov</div></div>
+  <div class="admin-metric"><div class="admin-metric-val">${formatPriceShort(revenue)}</div><div class="admin-metric-label">Tushum (so'm)</div></div>`;
+ const badge = document.getElementById('adminReqBadge');
+ if (badge) badge.textContent = pending ? `(${pending})` : '';
+}
+
+function adminUserStatus(u) {
+ const s = u.subscription || {};
+ const now = new Date();
+ if (s.status === 'active' && s.expiresAt && new Date(s.expiresAt) > now) return `Faol ${planByKey(s.plan).name}${s.expiresAt ? ' • ' + formatDate(s.expiresAt) : ''}`;
+ if (u.trialEndsAt && new Date(u.trialEndsAt) > now) return 'Sinov';
+ return 'Bepul';
+}
+
+function renderAdminUsers() {
+ const el = document.getElementById('adminUsersList');
+ if (!el) return;
+ if (_adminUsers.length === 0) {
+  el.innerHTML = '<div class="empty-state"><p>Foydalanuvchi topilmadi</p></div>';
+  return;
+ }
+ el.innerHTML = _adminUsers.map(u => {
+  const name = u.displayName || u.email || u.id;
+  return `<div class="admin-user-row">
+   <div class="admin-user-info">
+    <div class="admin-user-name">${escHtml(name)}</div>
+    <div class="admin-user-meta">${escHtml(u.email || '')}${u.shopName ? ' • ' + escHtml(u.shopName) : ''} • ${escHtml(adminUserStatus(u))}</div>
+   </div>
+   <div class="admin-user-actions">
+    <button type="button" class="btn-primary btn-xs" onclick="adminActivateUser('${u.id}')">Faollashtirish</button>
+   </div>
+  </div>`;
+ }).join('');
+}
+
+function renderAdminRequests() {
+ const el = document.getElementById('adminRequestsList');
+ if (!el) return;
+ if (_adminRequests.length === 0) {
+  el.innerHTML = '<div class="empty-state"><p>To\'lov so\'rovi yo\'q</p></div>';
+  return;
+ }
+ el.innerHTML = _adminRequests.map(r => {
+  const done = r.status !== 'pending';
+  return `<div class="admin-user-row">
+   <div class="admin-user-info">
+    <div class="admin-user-name">${escHtml(r.email || r.uid)} — ${escHtml(r.planName || r.plan || '')}</div>
+    <div class="admin-user-meta">${formatPrice(r.amount || 0)} • ${escHtml(r.status || 'pending')} • ${formatDate(r.createdAt)}</div>
+   </div>
+   <div class="admin-user-actions">
+    ${done ? `<span class="subscription-status">${escHtml(r.status)}</span>` : `<button type="button" class="btn-primary btn-xs" onclick="adminApproveRequest('${r.id}')">Tasdiqlash</button>`}
+   </div>
+  </div>`;
+ }).join('');
+}
+
+async function adminApproveRequest(id) {
+ const req = _adminRequests.find(r => r.id === id);
+ if (!req) return;
+ if (!confirm(`${req.email || req.uid} uchun ${req.planName || req.plan} obunasini 1 oyga faollashtirasizmi?`)) return;
+ try {
+  const { doc, setDoc } = window.firebaseFns;
+  const now = new Date();
+  const expires = new Date(now.getTime() + 30 * 86400000).toISOString();
+  await setDoc(doc(window.firebaseDB, 'users', req.uid), {
+   plan: req.plan || 'standard',
+   subscription: { status: 'active', plan: req.plan || 'standard', startedAt: now.toISOString(), expiresAt: expires, provider: 'manual', lastPaymentId: id },
+   updatedAt: now.toISOString()
+  }, { merge: true });
+  await setDoc(doc(window.firebaseDB, 'paymentRequests', id), {
+   status: 'approved', approvedAt: now.toISOString(), expiresAt: expires, approvedBy: (window.currentUser && window.currentUser.email) || ''
+  }, { merge: true });
+  showToast('Obuna faollashtirildi', 'success');
+  await adminLoadData();
+ } catch (e) {
+  console.error('adminApproveRequest xato:', e);
+  showToast("Xato yuz berdi (rules/ruxsat).", 'error');
+ }
+}
+
+async function adminActivateUser(uid) {
+ if (!isAdminUser()) return;
+ const monthsRaw = prompt("Necha oyga faollashtirish? (1-12)", '1');
+ const months = parseInt(monthsRaw || '0', 10);
+ if (!months || months < 1) return;
+ const planRaw = (prompt("Tarif: standard yoki business", 'standard') || 'standard').toLowerCase();
+ const plan = PLANS[planRaw] ? planRaw : 'standard';
+ try {
+  const { doc, setDoc } = window.firebaseFns;
+  const now = new Date();
+  const expires = new Date(now.getTime() + months * 30 * 86400000).toISOString();
+  await setDoc(doc(window.firebaseDB, 'users', uid), {
+   plan,
+   subscription: { status: 'active', plan, startedAt: now.toISOString(), expiresAt: expires, provider: 'manual' },
+   updatedAt: now.toISOString()
+  }, { merge: true });
+  showToast(`${months} oyga "${plan}" faollashtirildi`, 'success');
+  await adminLoadData();
+ } catch (e) {
+  console.error('adminActivateUser xato:', e);
+  showToast("Xato yuz berdi (rules/ruxsat).", 'error');
  }
 }
 
@@ -6973,6 +7140,11 @@ window.getAccessState = getAccessState;
 window.canAddProduct = canAddProduct;
 window.isAdminUser = isAdminUser;
 window.PLANS = PLANS;
+window.openAdminPanel = openAdminPanel;
+window.adminSetTab = adminSetTab;
+window.adminLoadData = adminLoadData;
+window.adminApproveRequest = adminApproveRequest;
+window.adminActivateUser = adminActivateUser;
 window.saveUserMeta = saveUserMeta;
 window.loadUserMeta = loadUserMeta;
 window.loadUserCollections = loadUserCollections;

@@ -231,6 +231,7 @@
               </div>
             </div>
             <button type="button" class="user-menu-item" onclick="openProfileModal()">Profilni tahrirlash</button>
+            <button type="button" class="user-menu-item hidden" id="adminMenuBtn" onclick="openAdminPanel()">Admin panel</button>
             <button type="button" class="user-menu-item danger" onclick="handleSignOut()">Chiqish</button>
           </div>
         </div>
@@ -1869,6 +1870,32 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn-secondary" onclick="closeModal('paywallModal')">Yopish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Panel Modal -->
+  <div class="modal-overlay" id="adminModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3>Admin panel</h3>
+        <button class="modal-close" onclick="closeModal('adminModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="admin-metrics" id="adminMetrics"></div>
+        <div class="admin-tabs">
+          <button type="button" class="admin-tab active" id="adminTabUsers" onclick="adminSetTab('users')">Foydalanuvchilar</button>
+          <button type="button" class="admin-tab" id="adminTabRequests" onclick="adminSetTab('requests')">To'lov so'rovlari <span id="adminReqBadge"></span></button>
+        </div>
+        <div id="adminLoading" class="loading-state"><div class="spinner"></div><p>Yuklanmoqda...</p></div>
+        <div id="adminUsersList" class="admin-list"></div>
+        <div id="adminRequestsList" class="admin-list hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('adminModal')">Yopish</button>
       </div>
     </div>
   </div>
