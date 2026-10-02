@@ -1503,10 +1503,10 @@ async function submitPaymentRequest() {
    det.innerHTML = `
     <div class="pending-row"><span>Tarif:</span><b>${escHtml(plan.name)}</b></div>
     <div class="pending-row"><span>Summa:</span><b>${formatPrice(plan.price)} so'm</b></div>
-    <div class="pending-row"><span>Holat:</span><b class="status-pending">Ko'rib chiqilmoqda</b></div>
+    <div class="pending-row"><span>Holat:</span><b class="status-pending">Adminlar ko'rib chiqmoqda</b></div>
     ${_paymentReceiptData ? `<img class="pending-receipt" src="${_paymentReceiptData}" alt="Chek" onclick="openReceiptLightbox('${_paymentReceiptData}')" />` : ''}`;
   }
-  showToast("Chek qabul qilindi! Admin tasdiqlaydi.", 'success');
+  showToast("Chek yuborildi! Adminlar ko'rib chiqadi, keyin xabar beramiz.", 'success');
  } catch (e) {
   console.error('paymentRequest xato:', e);
   showToast("So'rov yuborilmadi. Internetni tekshiring.", 'error');
