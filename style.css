@@ -4316,6 +4316,19 @@ textarea {
 .paywall-pending p { font-size: 0.82rem; color: var(--text2); max-width: 320px; margin: 0 auto; }
 @keyframes popIn { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
+.paywall-confirm { display: flex; flex-direction: column; gap: 4px; }
+.paywall-confirm-plan {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.16), rgba(6, 182, 212, 0.14));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  text-align: center;
+  margin-bottom: 10px;
+}
+.paywall-confirm-label { font-size: 0.72rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; }
+.paywall-confirm-name { font-size: 1.15rem; font-weight: 800; margin-top: 4px; }
+.paywall-confirm-price { font-size: 0.95rem; font-weight: 700; color: var(--cyan); margin-top: 2px; }
+
 .paywall-amount-box {
   display: flex; align-items: center; justify-content: space-between;
   background: linear-gradient(135deg, rgba(168,85,247,0.16), rgba(6,182,212,0.14));

@@ -1857,8 +1857,17 @@
         </button>
       </div>
       <div class="modal-body">
-        <p class="paywall-intro">Yangi hisoblar uchun <b>14 kunlik bepul sinov</b> avtomatik boshlanadi. Sinov tugagach, cheksiz imkoniyatlar uchun tarif tanlang.</p>
+        <p class="paywall-intro" id="paywallIntro">Yangi hisoblar uchun <b>14 kunlik bepul sinov</b> avtomatik boshlanadi. Sinov tugagach, cheksiz imkoniyatlar uchun tarif tanlang.</p>
         <div class="plan-cards" id="planCards"></div>
+        <div id="paywallConfirm" class="paywall-confirm hidden">
+          <div class="paywall-confirm-plan">
+            <div class="paywall-confirm-label">Tanlangan tarif</div>
+            <div class="paywall-confirm-name" id="confirmPlanName">—</div>
+            <div class="paywall-confirm-price" id="confirmPlanPrice">—</div>
+          </div>
+          <button type="button" class="btn-primary btn-full" onclick="proceedToPayment()">O'tkazish</button>
+          <button type="button" class="btn-secondary btn-full" onclick="backToPaywallPlans()" style="margin-top:8px;">Orqaga</button>
+        </div>
         <div id="paywallPayArea" class="paywall-pay-area hidden">
           <h4 class="profile-subtitle" id="paywallPayTitle">To'lov</h4>
 
@@ -1912,6 +1921,7 @@
           </div>
 
           <button type="button" class="btn-primary btn-full" onclick="submitPaymentRequest()">Chek yuborish</button>
+          <button type="button" class="auth-link" onclick="backToPaywallPlans()">← Boshqa tarif tanlash</button>
         </div>
         <div id="paywallPending" class="paywall-pending hidden">
           <div class="paywall-pending-icon">✓</div>

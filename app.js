@@ -1407,18 +1407,48 @@ function openPaywall() {
  renderPaywallPlans();
  _selectedPlan = null;
  resetPaywallForm();
- const payArea = document.getElementById('paywallPayArea');
+ backToPaywallPlans();
  const pending = document.getElementById('paywallPending');
- if (payArea) payArea.classList.add('hidden');
  if (pending) pending.classList.add('hidden');
  openModal('paywallModal');
 }
 
+// 1-bosqich: tarif tanlandi -> tasdiqlash ("O'tkazish")
 function choosePlan(planKey) {
  const plan = planByKey(planKey);
  if (!plan || plan.price === 0) return;
  _selectedPlan = planKey;
+ const planCards = document.getElementById('planCards');
+ const confirm = document.getElementById('paywallConfirm');
  const area = document.getElementById('paywallPayArea');
+ const intro = document.getElementById('paywallIntro');
+ if (planCards) planCards.classList.add('hidden');
+ if (area) area.classList.add('hidden');
+ if (intro) intro.classList.add('hidden');
+ const cn = document.getElementById('confirmPlanName'); if (cn) cn.textContent = plan.name;
+ const cp = document.getElementById('confirmPlanPrice'); if (cp) cp.textContent = plan.priceLabel;
+ if (confirm) confirm.classList.remove('hidden');
+}
+
+// Orqaga: tariflar ro'yxatiga qaytish
+function backToPaywallPlans() {
+ const planCards = document.getElementById('planCards');
+ const confirm = document.getElementById('paywallConfirm');
+ const area = document.getElementById('paywallPayArea');
+ const intro = document.getElementById('paywallIntro');
+ if (confirm) confirm.classList.add('hidden');
+ if (area) area.classList.add('hidden');
+ if (planCards) planCards.classList.remove('hidden');
+ if (intro) intro.classList.remove('hidden');
+}
+
+// 2-bosqich: "O'tkazish" -> to'lov sahifasi
+function proceedToPayment() {
+ const plan = planByKey(_selectedPlan);
+ if (!plan) { showToast('Avval tarif tanlang', 'warning'); return; }
+ const confirm = document.getElementById('paywallConfirm');
+ const area = document.getElementById('paywallPayArea');
+ if (confirm) confirm.classList.add('hidden');
  const title = document.getElementById('paywallPayTitle');
  if (title) title.textContent = `${plan.name} — ${plan.priceLabel}`;
  const pl = document.getElementById('paymeLink');
@@ -1432,7 +1462,10 @@ function choosePlan(planKey) {
  const amt = document.getElementById('payAmount');
  if (amt) amt.textContent = formatPrice(plan.price) + " so'm";
  resetPaywallForm();
- if (area) { area.classList.remove('hidden'); }
+ if (area) {
+  area.classList.remove('hidden');
+  if (typeof area.scrollIntoView === 'function') area.scrollIntoView({ block: 'nearest' });
+ }
 }
 
 async function submitPaymentRequest() {
@@ -7396,6 +7429,8 @@ window.saveProfile = saveProfile;
 window.handleChangePassword = handleChangePassword;
 window.openPaywall = openPaywall;
 window.choosePlan = choosePlan;
+window.proceedToPayment = proceedToPayment;
+window.backToPaywallPlans = backToPaywallPlans;
 window.submitPaymentRequest = submitPaymentRequest;
 window.triggerPaymentReceipt = triggerPaymentReceipt;
 window.handlePaymentReceiptFile = handlePaymentReceiptFile;
