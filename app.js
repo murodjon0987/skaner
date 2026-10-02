@@ -309,8 +309,16 @@ window.handleAdminCode = async function () {
  if (!ok) return;
  if (window.currentUser) {
   if (typeof openAdminPanel === 'function') openAdminPanel();
- } else if (typeof showToast === 'function') {
-  showToast("Kod qabul qilindi. Endi hisobingiz bilan kiring.", 'success');
+ } else {
+  const el = document.getElementById('authError');
+  if (el) {
+   el.textContent = "Kod qabul qilindi. Endi Google yoki email bilan kiring — admin panel avtomatik ochiladi.";
+   el.classList.remove('hidden');
+   el.style.background = 'rgba(34,197,94,0.12)';
+   el.style.borderColor = 'rgba(34,197,94,0.35)';
+   el.style.color = '#86efac';
+  }
+  if (typeof showToast === 'function') showToast('Kod qabul qilindi. Endi kiring.', 'success');
  }
 };
 
@@ -1602,6 +1610,7 @@ function adminSetTab(tab) {
 async function adminLoadData() {
  const loading = document.getElementById('adminLoading');
  if (loading) loading.style.display = 'flex';
+ let errMsg = '';
  try {
   if (window.useDemo || !window.firebaseDB || !window.firebaseFns) {
    _adminUsers = []; _adminRequests = [];
@@ -1616,9 +1625,18 @@ async function adminLoadData() {
   }
  } catch (e) {
   console.warn('admin yuklash xato:', e);
-  showToast("Ma'lumot yuklanmadi (rules/ruxsat).", 'error');
+  errMsg = (e && (e.code || e.message)) ? String(e.code || e.message) : 'Xato';
  }
  if (loading) loading.style.display = 'none';
+ if (errMsg) {
+  showToast("Admin ma'lumotlari yuklanmadi: " + errMsg, 'error');
+  const hint = '<div class="empty-state" style="padding:20px 10px;"><p style="color:#fca5a5;">Ma\'lumot yuklanmadi</p>' +
+   '<p style="font-size:0.72rem;color:var(--text3);margin-top:6px;">Sabab: ' + escHtml(errMsg) + '</p>' +
+   '<p style="font-size:0.72rem;color:var(--text3);margin-top:6px;">Firestore <b>Rules</b> yangilanganini va admin emaili to\'g\'riligini tekshiring.</p></div>';
+  const ul = document.getElementById('adminUsersList'); if (ul) ul.innerHTML = hint;
+  const rl = document.getElementById('adminRequestsList'); if (rl) rl.innerHTML = hint;
+  return;
+ }
  renderAdminMetrics();
  renderAdminUsers();
  renderAdminRequests();
