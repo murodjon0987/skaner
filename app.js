@@ -1123,8 +1123,11 @@ function renderUserMenu() {
  if (wrap) {
   if (!user) {
    wrap.classList.add('hidden');
+   const ab = document.getElementById('accountSettingsBlock'); if (ab) ab.classList.add('hidden');
+   const adb = document.getElementById('adminSettingsBlock'); if (adb) adb.classList.add('hidden');
   } else {
    wrap.classList.remove('hidden');
+   const ab2 = document.getElementById('accountSettingsBlock'); if (ab2) ab2.classList.remove('hidden');
 
    const name = user.displayName || (user.email ? user.email.split('@')[0] : 'Foydalanuvchi');
    const email = user.email || '';

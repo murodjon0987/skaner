@@ -178,6 +178,7 @@ body {
 
 /* ====== TOP NAV ====== */
 .top-nav {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -185,9 +186,9 @@ body {
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  z-index: 10;
+  z-index: 60;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .brand-logo {
@@ -207,7 +208,7 @@ body {
   gap: 5px;
   flex-shrink: 0;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .nav-btn {
