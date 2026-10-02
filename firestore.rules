@@ -5,7 +5,8 @@ rules_version = '2';
 // =============================================================
 // - Har bir user faqat o'z `users/{uid}` ostidagi ma'lumotlarini boshqaradi.
 // - Admin (ADMIN_EMAIL) barcha userlarni va to'lov so'rovlarini boshqaradi.
-// - paymentRequests: user o'zinikini yarata oladi, admin tasdiqlaydi.
+// - notifications: user o'qiydi va faqat "read" ni belgilaydi;
+//   yaratish/o'chirish faqat admin.
 //
 // Joylashtirish: firebase deploy --only firestore:rules
 // (yoki Firebase Console → Firestore → Rules)
@@ -22,6 +23,10 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email == 'syodgorov47@gmail.com';
     }
 
+    function ownerOrAdmin(userId) {
+      return isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
     // Admin allowlist hujjatlari
     match /admins/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
@@ -35,12 +40,28 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // Foydalanuvchi profili va uning barcha sub-kolleksiyalari
+    // Foydalanuvchi profili va sub-kolleksiyalari
     match /users/{userId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow read, write: if ownerOrAdmin(userId);
 
-      match /{document=**} {
-        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      // Ma'lumot sub-kolleksiyalari (owner yoki admin)
+      match /products/{docId} { allow read, write: if ownerOrAdmin(userId); }
+      match /bills/{docId} { allow read, write: if ownerOrAdmin(userId); }
+      match /debtors/{docId} { allow read, write: if ownerOrAdmin(userId); }
+      match /debts/{docId} { allow read, write: if ownerOrAdmin(userId); }
+      match /expenses/{docId} { allow read, write: if ownerOrAdmin(userId); }
+      match /supplies/{docId} { allow read, write: if ownerOrAdmin(userId); }
+      match /quickItems/{docId} { allow read, write: if ownerOrAdmin(userId); }
+      match /heldCarts/{docId} { allow read, write: if ownerOrAdmin(userId); }
+      match /meta/{docId} { allow read, write: if ownerOrAdmin(userId); }
+
+      // Xabarnomalar: user o'qiydi va "read" ni belgilaydi; yaratish faqat admin
+      match /notifications/{notifId} {
+        allow read: if ownerOrAdmin(userId);
+        allow create, delete: if isAdmin();
+        allow update: if isAdmin()
+          || (isSignedIn() && request.auth.uid == userId
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']));
       }
     }
 

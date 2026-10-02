@@ -4377,3 +4377,32 @@ textarea {
 .admin-user-name { font-weight: 700; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .admin-user-meta { font-size: 0.72rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .admin-user-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+.admin-req-card { background: var(--bg3); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.admin-req-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.admin-req-meta { font-size: 0.76rem; color: var(--text2); }
+.admin-req-reason { font-size: 0.76rem; color: #fca5a5; background: rgba(239,68,68,0.1); border-radius: 8px; padding: 6px 8px; }
+.admin-receipt { width: 100%; max-height: 200px; object-fit: contain; border-radius: 10px; background: #000; cursor: pointer; }
+.admin-req-noreceipt { font-size: 0.75rem; color: var(--text3); text-align: center; padding: 10px; border: 1px dashed var(--border); border-radius: 8px; }
+.admin-req-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.admin-req-actions .btn-primary, .admin-req-actions .btn-danger { flex: 1; }
+.req-status { font-size: 0.7rem; font-weight: 700; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+.req-status.st-pending { background: rgba(245,158,11,0.15); color: var(--yellow); }
+.req-status.st-approved { background: rgba(34,197,94,0.15); color: var(--green); }
+.req-status.st-rejected { background: rgba(239,68,68,0.15); color: #f87171; }
+
+/* ====== NOTIFICATIONS ====== */
+.notif-bell { position: relative; }
+.notif-badge {
+  position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 99px; background: var(--red); color: #fff; font-size: 0.62rem; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+}
+.notif-badge.hidden { display: none !important; }
+.notif-list { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; }
+.notif-item { background: var(--bg3); border: 1px solid var(--border); border-radius: 12px; padding: 11px 12px; cursor: pointer; transition: border-color .15s; }
+.notif-item.unread { border-color: rgba(168, 85, 247, 0.5); background: rgba(168, 85, 247, 0.08); }
+.notif-item:hover { border-color: rgba(168, 85, 247, 0.4); }
+.notif-title { font-weight: 700; font-size: 0.85rem; margin-bottom: 3px; }
+.notif-body { font-size: 0.78rem; color: var(--text2); line-height: 1.4; }
+.notif-time { font-size: 0.68rem; color: var(--text3); margin-top: 5px; }

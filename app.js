@@ -605,6 +605,7 @@ const ICONS = {
  sun: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
  moon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
  star: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+ bell: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
 };
 
 // icon(name, size, extraClass) → HTML string
@@ -1033,6 +1034,9 @@ window.scanposOnLogin = async function (user) {
  window.initApp();
  // Firestore'dagi og'ir kolleksiyalarni fonda yuklaymiz
  loadUserCollections();
+ // Obuna va xabarnomalarni jonli kuzatish
+ listenUserProfile();
+ listenNotifications();
 };
 
 window.scanposOnLogout = function () {
@@ -1040,6 +1044,7 @@ window.scanposOnLogout = function () {
   (APP._unsubs || []).forEach(fn => { try { fn(); } catch (e) {} });
  } catch (e) {}
  APP._unsubs = [];
+ try { stopNotificationListeners(); } catch (e) {}
  try { stopCamera(); } catch (e) {}
  window.currentUser = null;
  window.storageNs = '';
@@ -1087,6 +1092,7 @@ function renderUserMenu() {
  }
  renderSettingsProfile();
  renderSubscriptionUI();
+ updateBellBadge();
 }
 
 function renderSettingsProfile() {
@@ -1578,15 +1584,30 @@ function renderAdminRequests() {
   return;
  }
  el.innerHTML = _adminRequests.map(r => {
-  const done = r.status !== 'pending';
-  return `<div class="admin-user-row">
-   <div class="admin-user-info">
-    <div class="admin-user-name">${escHtml(r.email || r.uid)} — ${escHtml(r.planName || r.plan || '')}</div>
-    <div class="admin-user-meta">${formatPrice(r.amount || 0)} • ${escHtml(r.status || 'pending')} • ${formatDate(r.createdAt)}</div>
-   </div>
-   <div class="admin-user-actions">
-    ${done ? `<span class="subscription-status">${escHtml(r.status)}</span>` : `<button type="button" class="btn-primary btn-xs" onclick="adminApproveRequest('${r.id}')">Tasdiqlash</button>`}
-   </div>
+  const statusLabel = r.status === 'approved' ? 'Tasdiqlangan' : (r.status === 'rejected' ? 'Rad etilgan' : "Ko'rib chiqilmoqda");
+  const statusClass = r.status === 'approved' ? 'st-approved' : (r.status === 'rejected' ? 'st-rejected' : 'st-pending');
+  const receipt = r.receiptData ? `<img class="admin-receipt" src="${r.receiptData}" alt="Chek" onclick="openReceiptLightbox('${r.receiptData}')" />` : '<div class="admin-req-noreceipt">Chek yuklanmagan</div>';
+  const metaLine = [
+   r.payerName ? ('Ism: ' + escHtml(r.payerName)) : '',
+   r.payerPhone ? ('Tel: ' + escHtml(r.payerPhone)) : '',
+   r.note ? ('Izoh: ' + escHtml(r.note)) : ''
+  ].filter(Boolean).join(' • ');
+  const actions = r.status === 'pending'
+   ? `<button type="button" class="btn-primary btn-xs" onclick="adminApproveRequest('${r.id}')">Tasdiqlash</button>
+      <button type="button" class="btn-danger btn-xs" onclick="adminRejectRequest('${r.id}')">Rad etish</button>`
+   : `<span class="req-status ${statusClass}">${statusLabel}</span>`;
+  return `<div class="admin-req-card">
+    <div class="admin-req-head">
+      <div class="admin-user-info">
+        <div class="admin-user-name">${escHtml(r.email || r.uid)}</div>
+        <div class="admin-user-meta">${escHtml(r.planName || r.plan || '')} • ${formatPrice(r.amount || 0)} so'm • ${formatDate(r.createdAt)}</div>
+      </div>
+      <span class="req-status ${statusClass}">${statusLabel}</span>
+    </div>
+    ${metaLine ? `<div class="admin-req-meta">${metaLine}</div>` : ''}
+    ${receipt}
+    ${r.rejectReason ? `<div class="admin-req-reason">Sabab: ${escHtml(r.rejectReason)}</div>` : ''}
+    <div class="admin-req-actions">${actions}</div>
   </div>`;
  }).join('');
 }
@@ -1605,13 +1626,51 @@ async function adminApproveRequest(id) {
    updatedAt: now.toISOString()
   }, { merge: true });
   await setDoc(doc(window.firebaseDB, 'paymentRequests', id), {
-   status: 'approved', approvedAt: now.toISOString(), expiresAt: expires, approvedBy: (window.currentUser && window.currentUser.email) || ''
+   status: 'approved', approvedAt: now.toISOString(), expiresAt: expires, reviewedAt: now.toISOString(), approvedBy: (window.currentUser && window.currentUser.email) || ''
   }, { merge: true });
+  await adminNotifyUser(req.uid, "Obunangiz tasdiqlandi", `${req.planName || req.plan} tarif 1 oyga faollashtirildi. Cheksiz imkoniyatlardan foydalaning. Rahmat!`, { plan: req.plan, requestId: id });
   showToast('Obuna faollashtirildi', 'success');
   await adminLoadData();
  } catch (e) {
   console.error('adminApproveRequest xato:', e);
   showToast("Xato yuz berdi (rules/ruxsat).", 'error');
+ }
+}
+
+async function adminRejectRequest(id) {
+ const req = _adminRequests.find(r => r.id === id);
+ if (!req) return;
+ const reasonRaw = prompt('Rad etish sababi (foydalanuvchi ko\'radi):', '');
+ if (reasonRaw === null) return;
+ const reason = (reasonRaw || '').trim() || 'To\'lov tasdiqlanmadi';
+ try {
+  const { doc, setDoc } = window.firebaseFns;
+  const nowIso = new Date().toISOString();
+  await setDoc(doc(window.firebaseDB, 'paymentRequests', id), {
+   status: 'rejected', rejectReason: reason, reviewedAt: nowIso, reviewedBy: (window.currentUser && window.currentUser.email) || ''
+  }, { merge: true });
+  await adminNotifyUser(req.uid, "To'lov tasdiqlanmadi", `Sabab: ${reason}. Qayta urinib ko'ring yoki qo'llab-quvvatlashga murojaat qiling.`, { requestId: id });
+  showToast("So'rov rad etildi", 'info');
+  await adminLoadData();
+ } catch (e) {
+  console.error('adminRejectRequest xato:', e);
+  showToast('Xato yuz berdi (rules/ruxsat).', 'error');
+ }
+}
+
+async function adminNotifyUser(uid, title, body, meta) {
+ if (!uid || window.useDemo || !window.firebaseDB || !window.firebaseFns || !window.firebaseFns.addDoc) return;
+ try {
+  const { collection, addDoc } = window.firebaseFns;
+  await addDoc(collection(window.firebaseDB, 'users', uid, 'notifications'), {
+   type: 'subscription',
+   title, body,
+   meta: meta || {},
+   read: false,
+   createdAt: new Date().toISOString()
+  });
+ } catch (e) {
+  console.warn('adminNotifyUser xato:', e);
  }
 }
 
@@ -1631,11 +1690,126 @@ async function adminActivateUser(uid) {
    subscription: { status: 'active', plan, startedAt: now.toISOString(), expiresAt: expires, provider: 'manual' },
    updatedAt: now.toISOString()
   }, { merge: true });
-  showToast(`${months} oyga "${plan}" faollashtirildi`, 'success');
+   showToast(`${months} oyga "${plan}" faollashtirildi`, 'success');
   await adminLoadData();
  } catch (e) {
   console.error('adminActivateUser xato:', e);
   showToast("Xato yuz berdi (rules/ruxsat).", 'error');
+ }
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS (Xabarnomalar)
+// ─────────────────────────────────────────────
+let _notifications = [];
+let _notifUnsub = null;
+let _profileUnsub = null;
+
+function updateBellBadge() {
+ const bell = document.getElementById('notifBell');
+ if (!bell) return;
+ if (!window.currentUser) { bell.classList.add('hidden'); return; }
+ bell.classList.remove('hidden');
+ const unread = _notifications.filter(n => !n.read).length;
+ const badge = document.getElementById('notifBadge');
+ if (badge) {
+  if (unread > 0) { badge.textContent = unread > 99 ? '99+' : unread; badge.classList.remove('hidden'); }
+  else { badge.classList.add('hidden'); }
+ }
+}
+
+function renderNotifications() {
+ const el = document.getElementById('notifList');
+ if (!el) return;
+ if (_notifications.length === 0) {
+  el.innerHTML = `<div class="empty-state" style="padding:30px 10px;"><div class="empty-icon" style="margin:0 auto 8px;">${icon('bell', 34)}</div><p>Hozircha xabar yo'q</p></div>`;
+  return;
+ }
+ el.innerHTML = _notifications.map(n => `
+  <div class="notif-item ${n.read ? '' : 'unread'}" onclick="markNotificationRead('${n.id}')">
+   <div class="notif-title">${escHtml(n.title || 'Xabar')}</div>
+   <div class="notif-body">${escHtml(n.body || '')}</div>
+   <div class="notif-time">${formatDate(n.createdAt)}</div>
+  </div>`).join('');
+}
+
+function openNotifications() {
+ renderNotifications();
+ openModal('notifModal');
+}
+
+async function markNotificationRead(id) {
+ const n = _notifications.find(x => x.id === id);
+ if (!n || n.read) return;
+ n.read = true;
+ updateBellBadge();
+ renderNotifications();
+ if (!window.useDemo && window.currentUser && window.firebaseFns && window.firebaseFns.updateDoc) {
+  try {
+   await window.firebaseFns.updateDoc(window.firebaseFns.doc(window.firebaseDB, 'users', window.currentUser.uid, 'notifications', id), { read: true });
+  } catch (e) { /* ignore */ }
+ }
+}
+
+async function markAllNotificationsRead() {
+ const unread = _notifications.filter(n => !n.read);
+ if (unread.length === 0) return;
+ unread.forEach(n => { n.read = true; });
+ updateBellBadge();
+ renderNotifications();
+ if (!window.useDemo && window.currentUser && window.firebaseFns && window.firebaseFns.updateDoc) {
+  for (const n of unread) {
+   try {
+    await window.firebaseFns.updateDoc(window.firebaseFns.doc(window.firebaseDB, 'users', window.currentUser.uid, 'notifications', n.id), { read: true });
+   } catch (e) { /* ignore */ }
+  }
+ }
+}
+
+function listenNotifications() {
+ if (window.useDemo || !window.firebaseDB || !window.firebaseFns || !window.currentUser) return;
+ try {
+  const { collection, onSnapshot } = window.firebaseFns;
+  const colRef = collection(window.firebaseDB, 'users', window.currentUser.uid, 'notifications');
+  if (_notifUnsub) { try { _notifUnsub(); } catch (e) {} }
+  _notifUnsub = onSnapshot(colRef, (snap) => {
+   const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+   const prevIds = new Set(_notifications.map(n => n.id));
+   _notifications = arr;
+   updateBellBadge();
+   renderNotifications();
+   arr.filter(n => !n.read && !prevIds.has(n.id)).forEach(n => {
+    if (typeof showToast === 'function') showToast(`${n.title}: ${n.body}`, 'success');
+   });
+  });
+ } catch (e) {
+  console.warn('listenNotifications xato:', e);
+ }
+}
+
+function stopNotificationListeners() {
+ try { if (_notifUnsub) _notifUnsub(); } catch (e) {}
+ try { if (_profileUnsub) _profileUnsub(); } catch (e) {}
+ _notifUnsub = null;
+ _profileUnsub = null;
+ _notifications = [];
+ updateBellBadge();
+}
+
+function listenUserProfile() {
+ if (window.useDemo || !window.firebaseDB || !window.firebaseFns || !window.currentUser) return;
+ try {
+  const { doc, onSnapshot } = window.firebaseFns;
+  const ref = doc(window.firebaseDB, 'users', window.currentUser.uid);
+  if (_profileUnsub) { try { _profileUnsub(); } catch (e) {} }
+  _profileUnsub = onSnapshot(ref, (snap) => {
+   if (!snap.exists()) return;
+   APP.subscriptionData = snap.data() || {};
+   renderSubscriptionUI();
+  });
+ } catch (e) {
+  console.warn('listenUserProfile xato:', e);
  }
 }
 
@@ -7238,7 +7412,15 @@ window.openAdminPanel = openAdminPanel;
 window.adminSetTab = adminSetTab;
 window.adminLoadData = adminLoadData;
 window.adminApproveRequest = adminApproveRequest;
+window.adminRejectRequest = adminRejectRequest;
+window.adminNotifyUser = adminNotifyUser;
 window.adminActivateUser = adminActivateUser;
+window.openNotifications = openNotifications;
+window.markNotificationRead = markNotificationRead;
+window.markAllNotificationsRead = markAllNotificationsRead;
+window.updateBellBadge = updateBellBadge;
+window.listenNotifications = listenNotifications;
+window.listenUserProfile = listenUserProfile;
 window.saveUserMeta = saveUserMeta;
 window.loadUserMeta = loadUserMeta;
 window.loadUserCollections = loadUserCollections;
