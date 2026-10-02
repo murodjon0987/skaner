@@ -61,6 +61,23 @@
     if (el) { el.textContent = ''; el.classList.add('hidden'); }
   }
 
+  function showDemoNotice(msg) {
+    const box = qs('authDemoNotice');
+    if (!box) return;
+    if (msg) {
+      const p = box.querySelector('p');
+      if (p) p.textContent = msg;
+    }
+    box.classList.remove('hidden');
+  }
+
+  window.handleDemoContinue = function () {
+    hideAuthScreen();
+    window.useDemo = true;
+    window.firebaseReady = true;
+    window.triggerAppInit();
+  };
+
   function setBusy(busy) {
     const btn = qs('authSubmitBtn');
     const google = qs('btnGoogle');
@@ -83,7 +100,17 @@
       case 'auth/network-request-failed': return 'Tarmoq xatosi. Internetni tekshiring.';
       case 'auth/popup-blocked': return 'Popup bloklandi. Qayta urinib ko\'ring yoki brauzer ruxsatini bering.';
       case 'auth/account-exists-with-different-credential': return "Bu email boshqa usulda ro'yxatdan o'tgan. Boshqa usulda kirib ko'ring.";
-      case 'auth/operation-not-allowed': return "Bu kirish usuli Firebase'da yoqilmagan.";
+      case 'auth/operation-not-allowed': return "Bu kirish usuli Firebase'da yoqilmagan (Authentication → Sign-in method).";
+      case 'auth/unauthorized-domain': {
+        const host = (typeof window !== 'undefined' && window.location) ? window.location.hostname : '';
+        const proto = (typeof window !== 'undefined' && window.location) ? window.location.protocol : '';
+        if (proto === 'file:') {
+          return "Ilova file:// orqali ochilgan. Login ishlashi uchun uni localhost orqali oching: terminalda `npm start` yoki `npx serve -l 3000 .`.";
+        }
+        return `Bu domen ("${host}") Firebase'da ruxsat etilmagan. Konsol → Authentication → Settings → Authorized domains ga "${host}" ni qo'shing.`;
+      }
+      case 'auth/invalid-api-key': return "Firebase API kaliti noto'g'ri. firebase-config.js ni tekshiring.";
+      case 'auth/configuration-not-found': return "Autentifikatsiya sozlanmagan. Firebase'da Authentication → Get started va Sign-in method ni yoqing.";
       default: return (code ? String(code) : 'Xatolik yuz berdi. Qayta urinib ko\'ring.');
     }
   }
@@ -205,7 +232,8 @@
       console.log("ℹ️ Demo rejim (Firebase kaliti kiritilmagan)");
       window.useDemo = true;
       window.firebaseReady = true;
-      window.triggerAppInit();
+      showDemoNotice("Firebase hali sozlanmagan. firebase-config.js fayliga loyihangiz kalitlarini kiriting — shundan so'ng Google va email orqali kirish ishlaydi.");
+      showAuthScreen();
       return;
     }
 
@@ -252,13 +280,17 @@
             window.scanposOnLogout();
           }
           showAuthScreen();
+          if (window.location.protocol === 'file:') {
+            showAuthError('Ilova file:// orqali ochilgan. Login ishlashi uchun `npm start` buyrug\'i bilan ochib, brauzerda http://localhost:3000 manziliga o\'ting.');
+          }
         }
       });
     } catch (e) {
       console.warn('[Auth] Firebase yuklanmadi, demo rejimga o\'tildi:', e);
       window.useDemo = true;
       window.firebaseReady = true;
-      window.triggerAppInit();
+      showDemoNotice("Firebase'ga ulanib bo'lmadi (tarmoq yoki kalit xatosi). Demo rejimda davom etishingiz mumkin.");
+      showAuthScreen();
     }
   }
 

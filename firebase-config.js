@@ -15,10 +15,10 @@
 // Xavfsizlik Firestore Security Rules (firestore.rules) bilan ta'minlanadi.
 
 window.firebaseConfig = {
-  apiKey: "AIzaSyDEMO_REPLACE_WITH_YOUR_KEY",
-  authDomain: "scanpos-demo.firebaseapp.com",
-  projectId: "scanpos-demo",
-  storageBucket: "scanpos-demo.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef123456"
+  apiKey: "AIzaSyAsRH8on0BrXoZ63mIMz1nEL-CQ9iJAfxs",
+  authDomain: "skanere-a797c.firebaseapp.com",
+  projectId: "skanere-a797c",
+  storageBucket: "skanere-a797c.firebasestorage.app",
+  messagingSenderId: "83280010517",
+  appId: "1:83280010517:web:247dc789c8cb199e4b1d1c"
 };
