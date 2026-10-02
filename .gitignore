@@ -1,2 +1,15 @@
 node_modules/
 .DS_Store
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+functions/node_modules/
+*-service-account*.json
+serviceAccountKey*.json
+
+# Build / cache
+dist/
+.cache/

@@ -1,0 +1,33 @@
+rules_version = '2';
+
+// =============================================================
+// ScanPOS – Firestore Security Rules (multi-tenant)
+// =============================================================
+// Har bir foydalanuvchi FAQAT o'zining `users/{uid}` hujjati va
+// uning ichidagi barcha ma'lumotlarni o'qiy va yozа oladi.
+// Boshqa foydalanuvchining ma'lumotlariga kirish taqiqlanadi.
+//
+// Joylashtirish:
+//   firebase deploy --only firestore:rules
+// yoki Firebase Console → Firestore Database → Rules ga nusxalash.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Foydalanuvchi profili
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Foydalanuvchiga tegishli barcha sub-kolleksiyalar
+      // (products, bills, debtors, debts, expenses, supplies, quickItems, heldCarts, meta)
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Boshqa barcha yo'llar yopiq
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

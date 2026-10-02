@@ -29,12 +29,18 @@
   <!-- PWA Manifest -->
   <link rel="manifest" href="manifest.json" />
 
-  <!-- Firebase SDK (Dynamic import + Try/Catch fallback) -->
+  <!-- Firebase config (tahrirlanadi: firebase-config.js) -->
+  <script src="firebase-config.js"></script>
+
+  <!-- App bootstrap: global holat + PWA + Service Worker -->
+  <!-- DIQQAT: Firebase init va autentifikatsiya auth.js da bajariladi -->
   <script>
     window.useDemo = true;
     window.firebaseDB = null;
     window.firebaseFns = {};
     window.firebaseReady = false;
+    window.currentUser = null;
+    window.storageNs = '';
 
     // Helper: App ni har qanday sharoitda xavfsiz ishga tushirish
     window.triggerAppInit = function () {
@@ -51,91 +57,6 @@
         }
       }
     };
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyDEMO_REPLACE_WITH_YOUR_KEY",
-      authDomain: "scanpos-demo.firebaseapp.com",
-      projectId: "scanpos-demo",
-      storageBucket: "scanpos-demo.appspot.com",
-      messagingSenderId: "123456789",
-      appId: "1:123456789:web:abcdef123456"
-    };
-
-    window.firebaseConfig = firebaseConfig;
-    window.isFirebaseConfigured = Boolean(firebaseConfig.apiKey && !firebaseConfig.apiKey.includes("REPLACE"));
-
-    let firebaseTimedOut = false;
-
-    async function initFirebase() {
-      // Config soxta bo'lsa darhol demo rejimga o'tish (tarmoqqa ulanishni kutmaslik)
-      if (!window.isFirebaseConfigured) {
-        console.log("ℹ️ Demo rejim (Firebase kaliti kiritilmagan)");
-        window.useDemo = true;
-        window.firebaseReady = true;
-        window.triggerAppInit();
-        return;
-      }
-
-      try {
-        const initPromise = (async () => {
-          const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
-          const firestore = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-          const { getAuth, signInAnonymously } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-
-          if (firebaseTimedOut) return; // Timeout bo'lgan bo'lsa natijani e'tiborsiz qoldirish
-
-          const app = initializeApp(firebaseConfig);
-          const db = firestore.getFirestore(app);
-          const auth = getAuth(app);
-          await signInAnonymously(auth);
-
-          if (firebaseTimedOut) return;
-
-          window.firebaseDB = db;
-          window.firebaseFns = {
-            collection: firestore.collection,
-            doc: firestore.doc,
-            getDoc: firestore.getDoc,
-            getDocs: firestore.getDocs,
-            setDoc: firestore.setDoc,
-            addDoc: firestore.addDoc,
-            updateDoc: firestore.updateDoc,
-            deleteDoc: firestore.deleteDoc,
-            onSnapshot: firestore.onSnapshot,
-            serverTimestamp: firestore.serverTimestamp,
-            writeBatch: firestore.writeBatch,
-            increment: firestore.increment
-          };
-          window.useDemo = false;
-          console.log("[Firebase] Firebase ulandi!");
-        })();
-
-        // 8 soniyalik timeout (3s o'rniga 8s)
-        await Promise.race([
-          initPromise,
-          new Promise((_, reject) => setTimeout(() => {
-            firebaseTimedOut = true;
-            reject(new Error('Firebase timeout'));
-          }, 8000))
-        ]);
-      } catch (e) {
-        console.warn("[Firebase] Firebase CDN yoki tarmoq xatosi, demo rejimga o'tildi:", e);
-        window.useDemo = true;
-        const msg = window.isFirebaseConfigured ? "Lokal rejim: ma'lumot serverga yuborilmaydi" : "Firebase ulanmadi, demo rejim";
-        if (typeof showToast === 'function') {
-          showToast(msg);
-        } else {
-          window.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => { if (typeof showToast === 'function') showToast(msg); }, 1800);
-          }, { once: true });
-        }
-      } finally {
-        window.firebaseReady = true;
-        window.triggerAppInit();
-      }
-    }
-
-    initFirebase();
 
     // Service Worker ro'yxatdan o'tkazish (Offline PWA)
     let swRegistration = null;
@@ -223,6 +144,51 @@
     </div>
   </div>
 
+  <!-- AUTH SCREEN (Login / Ro'yxatdan o'tish) -->
+  <div id="authScreen" class="auth-screen hidden">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <img src="logo.png" alt="ScanPOS" onerror="this.src='logo.svg'" />
+      </div>
+      <h1 class="auth-title">ScanPOS</h1>
+      <p class="auth-sub">Hisobingizga kiring yoki ro'yxatdan o'ting</p>
+
+      <button type="button" id="btnGoogle" class="btn-google" onclick="handleGoogleLogin()">
+        <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+          <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/>
+          <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/>
+          <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/>
+          <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571.001-.001.002-.001.003-.002l6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/>
+        </svg>
+        Google bilan davom etish
+      </button>
+
+      <div class="auth-divider"><span>yoki email bilan</span></div>
+
+      <form id="authForm" onsubmit="handleAuthSubmit(event); return false;">
+        <div class="auth-tabs">
+          <button type="button" id="tabLogin" class="auth-tab active" onclick="switchAuthTab('login')">Kirish</button>
+          <button type="button" id="tabRegister" class="auth-tab" onclick="switchAuthTab('register')">Ro'yxatdan o'tish</button>
+        </div>
+        <div class="form-group" id="authNameGroup" style="display:none;">
+          <label>Ism</label>
+          <input type="text" id="authName" placeholder="Ism Familiya" autocomplete="name" />
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="authEmail" placeholder="email@gmail.com" autocomplete="email" required />
+        </div>
+        <div class="form-group">
+          <label>Parol</label>
+          <input type="password" id="authPassword" placeholder="Kamida 6 belgi" autocomplete="current-password" required minlength="6" />
+        </div>
+        <button type="submit" class="btn-primary btn-full" id="authSubmitBtn">Kirish</button>
+      </form>
+      <button type="button" id="btnForgot" class="auth-link" onclick="handlePasswordReset()">Parolni tiklash</button>
+      <div id="authError" class="auth-error hidden"></div>
+    </div>
+  </div>
+
   <!-- MAIN APP -->
   <div id="app" class="app hidden">
 
@@ -246,6 +212,23 @@
           </svg>
         </button>
         <button id="langToggleBtn" class="nav-btn nav-btn-lang" onclick="toggleLanguage()" title="Tilni almashtirish (UZ / RU)" style="font-weight:700;font-size:0.75rem;padding:0 8px;letter-spacing:0.5px;">UZ</button>
+        <div class="user-menu-wrap hidden" id="userMenuWrap">
+          <button class="user-avatar-btn" id="userAvatarBtn" onclick="toggleUserMenu(event)" title="Profil">
+            <img id="userAvatarImg" class="user-avatar-img hidden" src="" alt="" />
+            <span id="userAvatarInitial" class="user-avatar-initial">S</span>
+          </button>
+          <div class="user-menu-dropdown hidden" id="userMenuDropdown">
+            <div class="user-menu-head">
+              <img id="userMenuImg" class="user-menu-img hidden" src="" alt="" />
+              <div class="user-menu-info">
+                <div class="user-menu-name" id="userMenuName">Foydalanuvchi</div>
+                <div class="user-menu-email" id="userMenuEmail"></div>
+              </div>
+            </div>
+            <button type="button" class="user-menu-item" onclick="openProfileSettings()">Do'kon sozlamalari</button>
+            <button type="button" class="user-menu-item danger" onclick="handleSignOut()">Chiqish</button>
+          </div>
+        </div>
         <button class="nav-btn" onclick="showPage('settings')" title="Sozlamalar">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
@@ -1822,6 +1805,7 @@
   </div>
 
   <script src="app.js"></script>
+  <script src="auth.js"></script>
 </body>
 
 </html>

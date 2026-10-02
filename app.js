@@ -48,6 +48,58 @@ const APP = {
 };
 
 // ─────────────────────────────────────────────
+// USER-SCOPED STORAGE NAMESPACE
+// ─────────────────────────────────────────────
+// Har bir foydalanuvchi ma'lumotlari (local) bir-biridan ajratiladi.
+// Kirgan foydalanuvchi uchun window.storageNs = 'u_<uid>'.
+// Demo rejimda namespace bo'sh bo'ladi (eski xatti-harakat saqlanadi).
+function nsKey(key) {
+ if (typeof window !== 'undefined' && window.storageNs) {
+  return 'scanpos_ns_' + window.storageNs + '__' + key;
+ }
+ return key;
+}
+
+// ─────────────────────────────────────────────
+// FIRESTORE USER-SCOPED PATHS (multi-tenant)
+// ─────────────────────────────────────────────
+function userCol(name) {
+ if (!window.firebaseDB || !window.firebaseFns) return null;
+ if (window.currentUser && window.currentUser.uid) {
+  return window.firebaseFns.collection(window.firebaseDB, 'users', window.currentUser.uid, name);
+ }
+ // Demo/legacy fallback (foydalanuvchi yo'q) — global kolleksiya
+ return window.firebaseFns.collection(window.firebaseDB, name);
+}
+
+function userDoc(name, id) {
+ if (!window.firebaseDB || !window.firebaseFns) return null;
+ if (window.currentUser && window.currentUser.uid) {
+  return window.firebaseFns.doc(window.firebaseDB, 'users', window.currentUser.uid, name, id);
+ }
+ // Demo/legacy fallback (foydalanuvchi yo'q) — global hujjat
+ return window.firebaseFns.doc(window.firebaseDB, name, id);
+}
+
+async function cloudSet(name, id, data) {
+ if (window.useDemo || !window.firebaseDB || !window.firebaseFns || !window.currentUser) return;
+ try {
+  await window.firebaseFns.setDoc(userDoc(name, id), data);
+ } catch (e) {
+  console.warn(`cloudSet(${name}) xato:`, e);
+ }
+}
+
+async function cloudDelete(name, id) {
+ if (window.useDemo || !window.firebaseDB || !window.firebaseFns || !window.currentUser) return;
+ try {
+  await window.firebaseFns.deleteDoc(userDoc(name, id));
+ } catch (e) {
+  console.warn(`cloudDelete(${name}) xato:`, e);
+ }
+}
+
+// ─────────────────────────────────────────────
 // INDEXED DB WRAPPER (ScanDB)
 // ─────────────────────────────────────────────
 const ScanDB = {
@@ -75,10 +127,11 @@ const ScanDB = {
  });
  },
  async get(key, defaultVal = null) {
+ key = nsKey(key);
  try {
- const db = await this.getDb();
- if (!db) {
- const v = localStorage.getItem('idb_' + key);
+  const db = await this.getDb();
+  if (!db) {
+  const v = localStorage.getItem('idb_' + key);
  return v ? JSON.parse(v) : defaultVal;
  }
  return new Promise((resolve) => {
@@ -96,6 +149,7 @@ const ScanDB = {
  }
  },
  async set(key, value) {
+ key = nsKey(key);
  const run = async () => {
  try {
  const db = await this.getDb();
@@ -127,6 +181,7 @@ const ScanDB = {
  return this._opQueue;
  },
  async delete(key) {
+ key = nsKey(key);
  const run = async () => {
  try {
  const db = await this.getDb();
@@ -239,10 +294,10 @@ async function updateOutboxUI() {
 async function processOutbox() {
  if (outboxBusy) return;
  if (!window.firebaseDB || !window.firebaseFns || !navigator.onLine) {
- return;
+  return;
  }
  if (window.useDemo && !window.isFirebaseConfigured) {
- return;
+  return;
  }
 
  outboxBusy = true;
@@ -251,36 +306,36 @@ async function processOutbox() {
  if (currentQueue.length === 0) return;
 
  const successfulIds = new Set();
- const { doc, setDoc, deleteDoc, writeBatch: wb, increment } = window.firebaseFns;
+ const { setDoc, deleteDoc, writeBatch: wb, increment } = window.firebaseFns;
 
  for (const task of currentQueue) {
  try {
- if (task.action === 'saveProduct' || task.action === 'product') {
- await withTimeout(setDoc(doc(window.firebaseDB, 'products', task.data.id), task.data));
- successfulIds.add(task.id);
- } else if (task.action === 'deleteProduct') {
- await withTimeout(deleteDoc(doc(window.firebaseDB, 'products', task.id)));
- successfulIds.add(task.id);
- } else if (task.action === 'saveBill' || task.action === 'bill') {
- await withTimeout(setDoc(doc(window.firebaseDB, 'bills', task.data.id), task.data));
- successfulIds.add(task.id);
- } else if (task.action === 'saveDebtor' || task.action === 'debtor') {
- await withTimeout(setDoc(doc(window.firebaseDB, 'debtors', task.data.id), task.data));
- successfulIds.add(task.id);
- } else if (task.action === 'deleteDebtor') {
- await withTimeout(deleteDoc(doc(window.firebaseDB, 'debtors', task.id)));
- successfulIds.add(task.id);
- } else if (task.action === 'saveDebt' || task.action === 'debt') {
- await withTimeout(setDoc(doc(window.firebaseDB, 'debts', task.data.id), task.data));
- successfulIds.add(task.id);
- } else if (task.action === 'deleteDebt') {
- await withTimeout(deleteDoc(doc(window.firebaseDB, 'debts', task.id)));
- successfulIds.add(task.id);
- } else if (task.action === 'saleBatch' || task.action === 'refundBatch') {
- const batch = wb(window.firebaseDB);
- if (task.products && Array.isArray(task.products)) {
- for (const pUpdate of task.products) {
- const pRef = doc(window.firebaseDB, 'products', pUpdate.id);
+  if (task.action === 'saveProduct' || task.action === 'product') {
+  await withTimeout(setDoc(userDoc('products', task.data.id), task.data));
+  successfulIds.add(task.id);
+  } else if (task.action === 'deleteProduct') {
+  await withTimeout(deleteDoc(userDoc('products', task.id)));
+  successfulIds.add(task.id);
+  } else if (task.action === 'saveBill' || task.action === 'bill') {
+  await withTimeout(setDoc(userDoc('bills', task.data.id), task.data));
+  successfulIds.add(task.id);
+  } else if (task.action === 'saveDebtor' || task.action === 'debtor') {
+  await withTimeout(setDoc(userDoc('debtors', task.data.id), task.data));
+  successfulIds.add(task.id);
+  } else if (task.action === 'deleteDebtor') {
+  await withTimeout(deleteDoc(userDoc('debtors', task.id)));
+  successfulIds.add(task.id);
+  } else if (task.action === 'saveDebt' || task.action === 'debt') {
+  await withTimeout(setDoc(userDoc('debts', task.data.id), task.data));
+  successfulIds.add(task.id);
+  } else if (task.action === 'deleteDebt') {
+  await withTimeout(deleteDoc(userDoc('debts', task.id)));
+  successfulIds.add(task.id);
+  } else if (task.action === 'saleBatch' || task.action === 'refundBatch') {
+  const batch = wb(window.firebaseDB);
+  if (task.products && Array.isArray(task.products)) {
+  for (const pUpdate of task.products) {
+  const pRef = userDoc('products', pUpdate.id);
  if (typeof increment === 'function' && pUpdate.qtyChange !== undefined) {
  batch.update(pRef, {
  stock: increment(pUpdate.qtyChange),
@@ -294,12 +349,12 @@ async function processOutbox() {
  }
  }
  }
- if (task.bill) {
- batch.set(doc(window.firebaseDB, 'bills', task.bill.id), task.bill);
+  if (task.bill) {
+  batch.set(userDoc('bills', task.bill.id), task.bill);
     }
     if (task.debt) {
-     batch.set(doc(window.firebaseDB, 'debts', task.debt.id), task.debt);
- }
+     batch.set(userDoc('debts', task.debt.id), task.debt);
+  }
  await withTimeout(batch.commit());
  successfulIds.add(task.id);
  }
@@ -518,7 +573,7 @@ function normalizeGTIN(gtin14) {
 
 function loadCategoryPrices() {
  try {
- const saved = localStorage.getItem('scanpos_category_prices');
+  const saved = localStorage.getItem(nsKey('scanpos_category_prices'));
  APP.categoryPrices = saved
  ? { ...DEFAULT_CATEGORY_PRICES, ...JSON.parse(saved) }
  : { ...DEFAULT_CATEGORY_PRICES };
@@ -528,7 +583,7 @@ function loadCategoryPrices() {
 }
 
 function saveCategoryPrices() {
- localStorage.setItem('scanpos_category_prices', JSON.stringify(APP.categoryPrices));
+ localStorage.setItem(nsKey('scanpos_category_prices'), JSON.stringify(APP.categoryPrices));
 }
 
 // ZXing reader (lazy loaded)
@@ -730,16 +785,19 @@ window.initApp = async function () {
  }
 
  // Firebase real-time listeners
- if (!window.useDemo && window.firebaseDB) {
- listenFirestoreProducts();
-  listenFirestoreBills();
-  listenFirestoreDebtors();
-  listenFirestoreDebts();
+ if (!window.useDemo && window.firebaseDB && window.currentUser) {
+  const unsubs = [
+   listenFirestoreProducts(),
+   listenFirestoreBills(),
+   listenFirestoreDebtors(),
+   listenFirestoreDebts()
+  ].filter(fn => typeof fn === 'function');
+  APP._unsubs = (APP._unsubs || []).concat(unsubs);
  } else {
  renderProducts();
-  renderBills();
-  renderDebtors();
-  updateNasiyaStats();
+   renderBills();
+   renderDebtors();
+   updateNasiyaStats();
  }
 
  updateCartUI();
@@ -747,9 +805,181 @@ window.initApp = async function () {
  updateTorchUI();
  updateNetworkStatus();
  checkBackupReminder();
+ renderUserMenu();
 };
 
-// initApp faqat initFirebase() finally blokidan chaqiriladi (index.html)
+// ─────────────────────────────────────────────
+// SESSIYA BOSHQARUVI (auth.js bilan integratsiya)
+// ─────────────────────────────────────────────
+async function ensureUserProfile(user) {
+ if (!window.firebaseDB || !window.firebaseFns) return;
+ try {
+  const { doc, getDoc, setDoc } = window.firebaseFns;
+  const ref = doc(window.firebaseDB, 'users', user.uid);
+  const snap = await getDoc(ref);
+  const base = {
+   uid: user.uid,
+   displayName: user.displayName || '',
+   email: user.email || '',
+   photoURL: user.photoURL || '',
+   lastLoginAt: new Date().toISOString(),
+   updatedAt: new Date().toISOString()
+  };
+  if (!snap.exists()) {
+   await setDoc(ref, { ...base, shopName: '', createdAt: new Date().toISOString() }, { merge: true });
+  } else {
+   await setDoc(ref, base, { merge: true });
+  }
+ } catch (e) {
+  console.warn('Profil yangilash xato:', e);
+ }
+}
+
+async function loadUserMeta() {
+ if (!window.firebaseDB || !window.firebaseFns || !window.currentUser) return;
+ try {
+  const { doc, getDoc } = window.firebaseFns;
+  const ref = doc(window.firebaseDB, 'users', window.currentUser.uid, 'meta', 'settings');
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const d = snap.data() || {};
+  if (d.settings && typeof d.settings === 'object') {
+   APP.settings = d.settings;
+   localStorage.setItem(nsKey('scanpos_settings'), JSON.stringify(APP.settings));
+  }
+  if (d.categoryPrices && typeof d.categoryPrices === 'object') {
+   APP.categoryPrices = { ...DEFAULT_CATEGORY_PRICES, ...d.categoryPrices };
+ localStorage.setItem(nsKey('scanpos_category_prices'), JSON.stringify(APP.categoryPrices));
+ if (typeof saveUserMeta === 'function') saveUserMeta();
+  }
+  if (Array.isArray(d.quickItems) && d.quickItems.length > 0) {
+   APP.quickItems = d.quickItems;
+ localStorage.setItem(nsKey('scanpos_quick_items'), JSON.stringify(APP.quickItems));
+ if (typeof saveUserMeta === 'function') saveUserMeta();
+  }
+ } catch (e) {
+  console.warn('meta yuklash xato:', e);
+ }
+}
+
+async function saveUserMeta() {
+ if (window.useDemo || !window.firebaseDB || !window.firebaseFns || !window.currentUser) return;
+ try {
+  const { doc, setDoc } = window.firebaseFns;
+  await setDoc(doc(window.firebaseDB, 'users', window.currentUser.uid, 'meta', 'settings'), {
+   settings: APP.settings || {},
+   categoryPrices: APP.categoryPrices || {},
+   quickItems: APP.quickItems || [],
+   updatedAt: new Date().toISOString()
+  }, { merge: true });
+ } catch (e) {
+  console.warn('meta saqlash xato:', e);
+ }
+}
+
+async function loadUserCollections() {
+ if (window.useDemo || !window.firebaseDB || !window.firebaseFns || !window.currentUser) return;
+ try {
+  const { collection, getDocs } = window.firebaseFns;
+  const load = async (name, appKey, renderFn) => {
+   try {
+    const snap = await getDocs(collection(window.firebaseDB, 'users', window.currentUser.uid, name));
+    const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (arr.length > 0) {
+     APP[appKey] = arr;
+     if (typeof renderFn === 'function') renderFn();
+    }
+   } catch (e) { console.warn(`loadUserCollections(${name}) xato:`, e); }
+  };
+  await load('expenses', 'expenses', () => { if (APP.currentPage === 'analytics') renderAnalytics(); });
+  await load('supplies', 'supplies');
+ } catch (e) {
+  console.warn('loadUserCollections xato:', e);
+ }
+}
+
+window.scanposOnLogin = async function (user) {
+ window.currentUser = user;
+ window.storageNs = 'u_' + user.uid;
+ window.useDemo = false;
+ window._appInited = false;
+ try { await ensureUserProfile(user); } catch (e) {}
+ try { await loadUserMeta(); } catch (e) {}
+ window.initApp();
+ // Firestore'dagi og'ir kolleksiyalarni fonda yuklaymiz
+ loadUserCollections();
+};
+
+window.scanposOnLogout = function () {
+ try {
+  (APP._unsubs || []).forEach(fn => { try { fn(); } catch (e) {} });
+ } catch (e) {}
+ APP._unsubs = [];
+ try { stopCamera(); } catch (e) {}
+ window.currentUser = null;
+ window.storageNs = '';
+ window._appInited = false;
+ window.useDemo = true;
+ // Xotira holatini tozalash (local ma'lumotlar user bo'yicha ajratilgan)
+ APP.products = []; APP.bills = []; APP.debtors = []; APP.debts = [];
+ APP.cart = []; APP.expenses = []; APP.supplies = []; APP.heldCarts = [];
+ const appEl = document.getElementById('app');
+ if (appEl) appEl.classList.add('hidden');
+};
+
+// ─────────────────────────────────────────────
+// USER MENU UI
+// ─────────────────────────────────────────────
+function renderUserMenu() {
+ const wrap = document.getElementById('userMenuWrap');
+ if (!wrap) return;
+ const user = window.currentUser;
+ if (!user) { wrap.classList.add('hidden'); return; }
+ wrap.classList.remove('hidden');
+
+ const name = user.displayName || (user.email ? user.email.split('@')[0] : 'Foydalanuvchi');
+ const email = user.email || '';
+ const photo = user.photoURL || '';
+ const initial = (name.charAt(0) || 'S').toUpperCase();
+
+ const img = document.getElementById('userAvatarImg');
+ const initialEl = document.getElementById('userAvatarInitial');
+ if (img) {
+  if (photo) { img.src = photo; img.classList.remove('hidden'); if (initialEl) initialEl.classList.add('hidden'); }
+  else { img.classList.add('hidden'); if (initialEl) { initialEl.textContent = initial; initialEl.classList.remove('hidden'); } }
+ }
+ const mImg = document.getElementById('userMenuImg');
+ if (mImg) { if (photo) { mImg.src = photo; mImg.classList.remove('hidden'); } else { mImg.classList.add('hidden'); } }
+ const nameEl = document.getElementById('userMenuName');
+ const emailEl = document.getElementById('userMenuEmail');
+ if (nameEl) nameEl.textContent = name;
+ if (emailEl) emailEl.textContent = email;
+}
+
+function toggleUserMenu(event) {
+ if (event) event.stopPropagation();
+ const dd = document.getElementById('userMenuDropdown');
+ if (!dd) return;
+ dd.classList.toggle('hidden');
+}
+
+function openProfileSettings() {
+ const dd = document.getElementById('userMenuDropdown');
+ if (dd) dd.classList.add('hidden');
+ if (typeof showPage === 'function') showPage('settings');
+}
+
+if (typeof window !== 'undefined') {
+ document.addEventListener('click', (e) => {
+  const dd = document.getElementById('userMenuDropdown');
+  const wrap = document.getElementById('userMenuWrap');
+  if (dd && !dd.classList.contains('hidden') && wrap && !wrap.contains(e.target)) {
+   dd.classList.add('hidden');
+  }
+ });
+}
+
+// initApp faqat auth.js (yoki demo rejim) tomonidan chaqiriladi
 
 // ─────────────────────────────────────────────
 // ZXING LOADER
@@ -1215,7 +1445,7 @@ const DEFAULT_QUICK_ITEMS = [
 
 function loadQuickItems() {
  try {
- const raw = localStorage.getItem('scanpos_quick_items');
+ const raw = localStorage.getItem(nsKey('scanpos_quick_items'));
  if (raw) {
  const parsed = JSON.parse(raw);
  if (Array.isArray(parsed) && parsed.length > 0) {
@@ -1234,7 +1464,7 @@ function loadQuickItems() {
 
 function saveQuickItems() {
  try {
- localStorage.setItem('scanpos_quick_items', JSON.stringify(APP.quickItems));
+ localStorage.setItem(nsKey('scanpos_quick_items'), JSON.stringify(APP.quickItems));
  } catch (e) {}
 }
 
@@ -1458,7 +1688,7 @@ function clearCart() {
 function updateCartUI() {
  // Savatni localStorage ga saqlash
  try {
- localStorage.setItem('scanpos_cart', JSON.stringify(APP.cart || []));
+ localStorage.setItem(nsKey('scanpos_cart'), JSON.stringify(APP.cart || []));
  } catch (e) {}
 
  const cartList = document.getElementById('cartList');
@@ -1750,17 +1980,17 @@ function applyDiscount() {
  // 5, 6, 10: Firestore increment va atomik saleBatch
  if (!window.useDemo && window.firebaseDB && window.firebaseFns && navigator.onLine) {
  try {
- const { doc, writeBatch: wb, increment } = window.firebaseFns;
- const batch = wb(window.firebaseDB);
- for (const { prod, newStock, qty } of stockUpdates) {
- const pRef = doc(window.firebaseDB, 'products', prod.id);
- if (typeof increment === 'function') {
- batch.update(pRef, { stock: increment(-qty), updatedAt: new Date().toISOString() });
- } else {
- batch.update(pRef, { stock: newStock, updatedAt: new Date().toISOString() });
- }
- }
- batch.set(doc(window.firebaseDB, 'bills', bill.id), bill);
+  const { writeBatch: wb, increment } = window.firebaseFns;
+  const batch = wb(window.firebaseDB);
+  for (const { prod, newStock, qty } of stockUpdates) {
+  const pRef = userDoc('products', prod.id);
+  if (typeof increment === 'function') {
+  batch.update(pRef, { stock: increment(-qty), updatedAt: new Date().toISOString() });
+  } else {
+  batch.update(pRef, { stock: newStock, updatedAt: new Date().toISOString() });
+  }
+  }
+  batch.set(userDoc('bills', bill.id), bill);
  await withTimeout(batch.commit(), 10000);
 
  stockUpdates.forEach(({ prod, newStock }) => {
@@ -2834,9 +3064,9 @@ async function saveProductToDB(product) {
  return;
  }
  try {
- const { doc, setDoc } = window.firebaseFns;
- await withTimeout(setDoc(doc(window.firebaseDB, 'products', product.id), product), 10000);
- return;
+  const { setDoc } = window.firebaseFns;
+  await withTimeout(setDoc(userDoc('products', product.id), product), 10000);
+  return;
  } catch (e) {
  console.error('Firebase saqlash xato/timeout:', e);
  await enqueueOutbox({ action: 'saveProduct', data: product });
@@ -2873,9 +3103,9 @@ async function deleteProduct(productId) {
  return;
  }
  try {
- const { doc, deleteDoc } = window.firebaseFns;
- await withTimeout(deleteDoc(doc(window.firebaseDB, 'products', productId)), 10000);
- showToast('Mahsulot o\'chirildi');
+  const { deleteDoc } = window.firebaseFns;
+  await withTimeout(deleteDoc(userDoc('products', productId)), 10000);
+  showToast('Mahsulot o\'chirildi');
  return;
  } catch (e) {
  console.error('Firebase o\'chirish xato/timeout:', e);
@@ -2902,8 +3132,8 @@ async function saveDebtorToDB(debtor) {
  await enqueueOutbox({ action: 'debtor', type: 'debtor', data: debtor });
  } else {
  try {
- const { doc, setDoc } = window.firebaseFns;
- await withTimeout(setDoc(doc(window.firebaseDB, 'debtors', debtor.id), debtor), 10000);
+  const { setDoc } = window.firebaseFns;
+  await withTimeout(setDoc(userDoc('debtors', debtor.id), debtor), 10000);
  } catch (e) {
  console.error('Debtor saqlash xato/timeout:', e);
  await enqueueOutbox({ action: 'debtor', type: 'debtor', data: debtor });
@@ -2921,8 +3151,8 @@ async function deleteDebtorFromDB(debtorId) {
  await enqueueOutbox({ action: 'deleteDebtor', type: 'deleteDebtor', id: debtorId });
  } else {
  try {
- const { doc, deleteDoc } = window.firebaseFns;
- await withTimeout(deleteDoc(doc(window.firebaseDB, 'debtors', debtorId)), 10000);
+  const { deleteDoc } = window.firebaseFns;
+  await withTimeout(deleteDoc(userDoc('debtors', debtorId)), 10000);
  } catch (e) {
  console.error('Debtor o\'chirish xato/timeout:', e);
  await enqueueOutbox({ action: 'deleteDebtor', type: 'deleteDebtor', id: debtorId });
@@ -2939,8 +3169,8 @@ async function saveDebtToDB(debt) {
  await enqueueOutbox({ action: 'debt', type: 'debt', data: debt });
  } else {
  try {
- const { doc, setDoc } = window.firebaseFns;
- await withTimeout(setDoc(doc(window.firebaseDB, 'debts', debt.id), debt), 10000);
+  const { setDoc } = window.firebaseFns;
+  await withTimeout(setDoc(userDoc('debts', debt.id), debt), 10000);
  } catch (e) {
  console.error('Debt saqlash xato/timeout:', e);
  await enqueueOutbox({ action: 'debt', type: 'debt', data: debt });
@@ -2958,8 +3188,8 @@ async function deleteDebtFromDB(debtId) {
  await enqueueOutbox({ action: 'deleteDebt', type: 'deleteDebt', id: debtId });
  } else {
  try {
- const { doc, deleteDoc } = window.firebaseFns;
- await withTimeout(deleteDoc(doc(window.firebaseDB, 'debts', debtId)), 10000);
+  const { deleteDoc } = window.firebaseFns;
+  await withTimeout(deleteDoc(userDoc('debts', debtId)), 10000);
  } catch (e) {
  console.error('Debt o\'chirish xato/timeout:', e);
  await enqueueOutbox({ action: 'deleteDebt', type: 'deleteDebt', id: debtId });
@@ -2976,8 +3206,8 @@ async function deleteAllProducts() {
  // Firebase rejimida Firestore'dan ham batch orqali o'chirish
  if (!window.useDemo && window.firebaseDB && window.firebaseFns) {
  try {
- const { collection, getDocs, writeBatch } = window.firebaseFns;
- const snapshot = await getDocs(collection(window.firebaseDB, 'products'));
+  const { getDocs, writeBatch } = window.firebaseFns;
+  const snapshot = await getDocs(userCol('products'));
  if (!snapshot.empty) {
  let batch = writeBatch(window.firebaseDB);
  let count = 0;
@@ -3173,8 +3403,8 @@ function scanForModal() {
 // ─────────────────────────────────────────────
 function listenFirestoreProducts() {
  if (!window.firebaseDB || !window.firebaseFns || !window.firebaseFns.onSnapshot) return;
- const { collection, onSnapshot } = window.firebaseFns;
- const colRef = collection(window.firebaseDB, 'products');
+ const { onSnapshot } = window.firebaseFns;
+ const colRef = userCol('products');
  const handler = async (snap) => {
   let prods = snap.docs.map(d => normalizeProduct({ id: d.id, ...d.data() }));
   if (snap.metadata && snap.metadata.hasPendingWrites) {
@@ -3213,8 +3443,8 @@ function listenFirestoreProducts() {
 
 function listenFirestoreBills() {
  if (!window.firebaseDB || !window.firebaseFns || !window.firebaseFns.onSnapshot) return;
- const { collection, onSnapshot } = window.firebaseFns;
- const colRef = collection(window.firebaseDB, 'bills');
+ const { onSnapshot } = window.firebaseFns;
+ const colRef = userCol('bills');
  const handler = async (snap) => {
   let bills = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   if (snap.metadata && snap.metadata.hasPendingWrites) {
@@ -3242,8 +3472,8 @@ function listenFirestoreBills() {
 
 function listenFirestoreDebtors() {
  if (!window.firebaseDB || !window.firebaseFns || !window.firebaseFns.onSnapshot) return;
- const { collection, onSnapshot } = window.firebaseFns;
- const colRef = collection(window.firebaseDB, 'debtors');
+ const { onSnapshot } = window.firebaseFns;
+ const colRef = userCol('debtors');
  const handler = async (snap) => {
   let debtors = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   if (snap.metadata && snap.metadata.hasPendingWrites) {
@@ -3271,8 +3501,8 @@ function listenFirestoreDebtors() {
 
 function listenFirestoreDebts() {
  if (!window.firebaseDB || !window.firebaseFns || !window.firebaseFns.onSnapshot) return;
- const { collection, onSnapshot } = window.firebaseFns;
- const colRef = collection(window.firebaseDB, 'debts');
+ const { onSnapshot } = window.firebaseFns;
+ const colRef = userCol('debts');
  const handler = async (snap) => {
   let debts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   if (snap.metadata && snap.metadata.hasPendingWrites) {
@@ -3315,11 +3545,11 @@ async function saveBill(bill) {
  return;
  }
  try {
- const { doc, setDoc } = window.firebaseFns;
- await setDoc(doc(window.firebaseDB, 'bills', bill.id), bill);
- return;
- } catch (e) {
- console.error('Chek saqlash xato:', e);
+  const { setDoc } = window.firebaseFns;
+  await setDoc(userDoc('bills', bill.id), bill);
+  return;
+  } catch (e) {
+  console.error('Chek saqlash xato:', e);
  showToast('Chek saqlanmadi, internetni tekshiring', 'error');
  throw e;
  }
@@ -3339,13 +3569,13 @@ async function updateBillInDB(bill) {
  return;
  }
  try {
- const { doc, setDoc } = window.firebaseFns;
- await setDoc(doc(window.firebaseDB, 'bills', bill.id), bill);
- await saveLocalData();
- renderBills();
- return;
- } catch (e) {
- console.error('Chek yangilash xato:', e);
+  const { setDoc } = window.firebaseFns;
+  await setDoc(userDoc('bills', bill.id), bill);
+  await saveLocalData();
+  renderBills();
+  return;
+  } catch (e) {
+  console.error('Chek yangilash xato:', e);
  await enqueueOutbox({ action: 'saveBill', data: bill });
  await saveLocalData();
  renderBills();
@@ -3571,13 +3801,13 @@ async function submitRefund() {
  // 10 & 14: Saqlash bosqichi (atomik)
   if (!window.useDemo && window.firebaseDB && window.firebaseFns && navigator.onLine) {
    try {
-    const { doc, writeBatch: wb, increment } = window.firebaseFns;
+    const { writeBatch: wb, increment } = window.firebaseFns;
     const batch = wb(window.firebaseDB);
 
     for (const { item, qty } of toRefund) {
      const prod = APP.products.find(p => p.id === item.id);
      if (prod && isTracked(prod)) {
-      const pRef = doc(window.firebaseDB, 'products', prod.id);
+      const pRef = userDoc('products', prod.id);
       if (typeof increment === 'function') {
        batch.update(pRef, { stock: increment(qty), updatedAt: new Date().toISOString() });
       } else {
@@ -3586,9 +3816,9 @@ async function submitRefund() {
      }
     }
 
-    batch.set(doc(window.firebaseDB, 'bills', bill.id), bill);
+    batch.set(userDoc('bills', bill.id), bill);
     if (debtToUpdate) {
-     batch.set(doc(window.firebaseDB, 'debts', debtToUpdate.id), debtToUpdate);
+     batch.set(userDoc('debts', debtToUpdate.id), debtToUpdate);
     }
 
     await withTimeout(batch.commit(), 10000);
@@ -3862,7 +4092,7 @@ async function exportBackupJSON() {
  document.body.removeChild(a);
  URL.revokeObjectURL(url);
 
- localStorage.setItem('scanpos_last_backup_time', Date.now().toString());
+ localStorage.setItem(nsKey('scanpos_last_backup_time'), Date.now().toString());
  showToast('Zaxira nusxa muvaffaqiyatli yuklab olindi!');
  } catch (err) {
  console.error('Backup eksport xato:', err);
@@ -3997,7 +4227,7 @@ function exportBillsCSV() {
 }
 
 function checkBackupReminder() {
- const last = parseInt(localStorage.getItem('scanpos_last_backup_time') || '0', 10);
+ const last = parseInt(localStorage.getItem(nsKey('scanpos_last_backup_time')) || '0', 10);
  const now = Date.now();
  const sevenDays = 7 * 24 * 60 * 60 * 1000;
  if (!last || (now - last > sevenDays)) {
@@ -4014,8 +4244,8 @@ async function clearAllBills() {
  // Firebase rejimida Firestore'dan ham batch orqali o'chirish
  if (!window.useDemo && window.firebaseDB && window.firebaseFns) {
  try {
- const { collection, getDocs, writeBatch } = window.firebaseFns;
- const snapshot = await getDocs(collection(window.firebaseDB, 'bills'));
+  const { getDocs, writeBatch } = window.firebaseFns;
+  const snapshot = await getDocs(userCol('bills'));
  if (!snapshot.empty) {
  let batch = writeBatch(window.firebaseDB);
  let count = 0;
@@ -4070,7 +4300,7 @@ async function loadDemoProducts() {
 // ─────────────────────────────────────────────
 function loadSettings() {
  try {
- const saved = localStorage.getItem('scanpos_settings');
+ const saved = localStorage.getItem(nsKey('scanpos_settings'));
  APP.settings = saved ? JSON.parse(saved) : {};
  } catch { APP.settings = {}; }
 
@@ -4100,7 +4330,8 @@ function saveSettings() {
  voiceLang: document.getElementById('voiceLang')?.value || 'uz-UZ',
  lang: APP.settings?.lang || document.getElementById('settingsLangSelect')?.value || 'uz',
  };
- localStorage.setItem('scanpos_settings', JSON.stringify(APP.settings));
+ localStorage.setItem(nsKey('scanpos_settings'), JSON.stringify(APP.settings));
+ if (typeof saveUserMeta === 'function') saveUserMeta();
  APP.voiceOn = APP.settings.voiceEnabled;
 }
 
@@ -4125,9 +4356,9 @@ async function loadLocalData() {
  loadCategoryPrices();
  try {
  // 1. Sinxron fallback (agar hali bo'sh bo'lsa)
- const pSync = localStorage.getItem('scanpos_products');
- const bSync = localStorage.getItem('scanpos_bills');
- const cSync = localStorage.getItem('scanpos_cart');
+ const pSync = localStorage.getItem(nsKey('scanpos_products'));
+ const bSync = localStorage.getItem(nsKey('scanpos_bills'));
+ const cSync = localStorage.getItem(nsKey('scanpos_cart'));
  if (pSync && (!APP.products || APP.products.length === 0)) {
  try { APP.products = JSON.parse(pSync); } catch (e) {}
  }
@@ -4163,21 +4394,21 @@ async function loadLocalData() {
  APP.expenses = expIDB;
  } else {
  try {
-  const eSync = localStorage.getItem('scanpos_expenses');
+   const eSync = localStorage.getItem(nsKey('scanpos_expenses'));
   if (eSync) APP.expenses = JSON.parse(eSync);
  } catch (e) {}
  }
 
  // 3. Migratsiya: localStorage -> IndexedDB
- if (!localStorage.getItem('scanpos_migrated_v1')) {
+ if (!localStorage.getItem(nsKey('scanpos_migrated_v1'))) {
  if (APP.products && APP.products.length > 0) {
  await ScanDB.set('scanpos_products', APP.products);
  }
  if (APP.bills && APP.bills.length > 0) {
  await ScanDB.set('scanpos_bills', APP.bills);
  }
- const dSync = localStorage.getItem('scanpos_debtors');
- const tSync = localStorage.getItem('scanpos_debts');
+ const dSync = localStorage.getItem(nsKey('scanpos_debtors'));
+ const tSync = localStorage.getItem(nsKey('scanpos_debts'));
  if (dSync) {
  try { await ScanDB.set('scanpos_debtors', JSON.parse(dSync)); } catch (e) {}
  }
@@ -4186,11 +4417,11 @@ async function loadLocalData() {
  }
 
  // localStorage dan katta maydonlarni tozalash
- localStorage.removeItem('scanpos_products');
- localStorage.removeItem('scanpos_bills');
- localStorage.removeItem('scanpos_debtors');
- localStorage.removeItem('scanpos_debts');
- localStorage.setItem('scanpos_migrated_v1', 'true');
+ localStorage.removeItem(nsKey('scanpos_products'));
+ localStorage.removeItem(nsKey('scanpos_bills'));
+ localStorage.removeItem(nsKey('scanpos_debtors'));
+ localStorage.removeItem(nsKey('scanpos_debts'));
+ localStorage.setItem(nsKey('scanpos_migrated_v1'), 'true');
  console.log(' scanpos_migrated_v1: Maʼlumotlar IndexedDB ga oʻtkazildi');
  }
  } catch (e) {
@@ -4211,13 +4442,13 @@ async function loadLocalData() {
 async function saveLocalData() {
  try {
  // Faqat savat va sozlamalar localStorage'da qoladi
- localStorage.setItem('scanpos_cart', JSON.stringify(APP.cart || []));
+ localStorage.setItem(nsKey('scanpos_cart'), JSON.stringify(APP.cart || []));
 
  // Mahsulotlar (rasmlari bilan) va cheklar IndexedDB (ScanDB) da saqlanadi
  const ok1 = await ScanDB.set('scanpos_products', APP.products || []);
  const ok2 = await ScanDB.set('scanpos_bills', APP.bills || []);
  await ScanDB.set('scanpos_expenses', APP.expenses || []);
- try { localStorage.setItem('scanpos_expenses', JSON.stringify(APP.expenses || [])); } catch (e) {}
+ try { localStorage.setItem(nsKey('scanpos_expenses'), JSON.stringify(APP.expenses || [])); } catch (e) {}
  if (ok1 === false || ok2 === false) {
  showToast('Xotira to\'ldi yoki saqlanmadi', 'error');
  }
@@ -4824,8 +5055,8 @@ window.renderAnalytics = renderAnalytics;
 // ── Ma'lumotlarni yuklash / saqlash (IndexedDB / ScanDB) ──
 async function loadNasiyaData() {
  try {
- const dSync = localStorage.getItem('scanpos_debtors');
- const tSync = localStorage.getItem('scanpos_debts');
+ const dSync = localStorage.getItem(nsKey('scanpos_debtors'));
+ const tSync = localStorage.getItem(nsKey('scanpos_debts'));
  if (dSync && (!APP.debtors || APP.debtors.length === 0)) {
  try { APP.debtors = JSON.parse(dSync); } catch (e) {}
  }
@@ -5322,6 +5553,7 @@ async function submitSupply() {
  if (!Array.isArray(APP.supplies)) APP.supplies = [];
  APP.supplies.unshift(record);
  await ScanDB.set('scanpos_supplies', APP.supplies);
+ cloudSet('supplies', record.id, record);
 
  closeModal('supplyModal');
  if (typeof SOUNDS !== 'undefined') SOUNDS.tiq();
@@ -5572,7 +5804,7 @@ async function executeCSVImport() {
 async function saveHeldCarts() {
  await ScanDB.set('scanpos_held_carts', APP.heldCarts || []);
  try {
- localStorage.setItem('scanpos_held_carts', JSON.stringify(APP.heldCarts || []));
+ localStorage.setItem(nsKey('scanpos_held_carts'), JSON.stringify(APP.heldCarts || []));
  } catch (e) {}
 }
 
@@ -5974,8 +6206,9 @@ async function saveExpense(expense) {
 
  await ScanDB.set('scanpos_expenses', APP.expenses);
  try {
-  localStorage.setItem('scanpos_expenses', JSON.stringify(APP.expenses));
+  localStorage.setItem(nsKey('scanpos_expenses'), JSON.stringify(APP.expenses));
  } catch (e) {}
+ cloudSet('expenses', expense.id, expense);
 
  if (APP.currentPage === 'analytics') renderAnalytics();
  return expense;
@@ -5986,8 +6219,9 @@ async function deleteExpense(id) {
  APP.expenses = (APP.expenses || []).filter(e => e.id !== id);
  await ScanDB.set('scanpos_expenses', APP.expenses);
  try {
-  localStorage.setItem('scanpos_expenses', JSON.stringify(APP.expenses));
+  localStorage.setItem(nsKey('scanpos_expenses'), JSON.stringify(APP.expenses));
  } catch (e) {}
+ cloudDelete('expenses', id);
  renderExpensesList();
  if (APP.currentPage === 'analytics') renderAnalytics();
  showToast('Xarajat o\'chirildi');
@@ -6534,3 +6768,17 @@ window.t = t;
 window.changeLanguage = changeLanguage;
 window.toggleLanguage = toggleLanguage;
 window.applyLanguage = applyLanguage;
+
+// Auth / multi-tenant eksportlari
+window.renderUserMenu = renderUserMenu;
+window.toggleUserMenu = toggleUserMenu;
+window.openProfileSettings = openProfileSettings;
+window.saveUserMeta = saveUserMeta;
+window.loadUserMeta = loadUserMeta;
+window.loadUserCollections = loadUserCollections;
+window.ensureUserProfile = ensureUserProfile;
+window.userCol = userCol;
+window.userDoc = userDoc;
+window.cloudSet = cloudSet;
+window.cloudDelete = cloudDelete;
+window.nsKey = nsKey;
