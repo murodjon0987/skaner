@@ -45,6 +45,7 @@ const APP = {
  activeSupplyProduct: null,
  expenses: [], // Do'kon xarajatlari { id, title, category, amount, date, note }
  _filterExpiringStock: false, // Muddati tugayotgan tovarlarni filtrlash holati
+ subscriptionData: null, // Firestore'dagi obuna profili (users/{uid})
 };
 
 // ─────────────────────────────────────────────
@@ -222,6 +223,113 @@ function withTimeout(promise, ms = 10000) {
  promise,
  new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), ms))
  ]);
+}
+
+// ─────────────────────────────────────────────
+// SUBSCRIPTION / PLANS (Obuna va tariflar)
+// ─────────────────────────────────────────────
+const ADMIN_EMAIL = 'syodgorov47@gmail.com';
+const TRIAL_DAYS = 14;
+
+const PLANS = {
+ free: {
+  key: 'free', name: 'Bepul', price: 0, priceLabel: "0 so'm",
+  productLimit: 100, userLimit: 1,
+  features: ['100 tagacha mahsulot', '1 foydalanuvchi', 'Asosiy hisobot', 'Skaner va savat']
+ },
+ standard: {
+  key: 'standard', name: 'Standart', price: 49000, priceLabel: "49 000 so'm/oy",
+  productLimit: Infinity, userLimit: 2,
+  features: ["Cheksiz mahsulot", "To'liq analitika", 'Nasiya daftar', '2 foydalanuvchi', 'Ustuvor qo\'llab-quvvatlash']
+ },
+ business: {
+  key: 'business', name: 'Biznes', price: 149000, priceLabel: "149 000 so'm/oy",
+  productLimit: Infinity, userLimit: 50,
+  features: ["Standart'dagi hammasi", "Ko'p filial (tez orada)", 'Rollar va audit', 'Eksport (PDF/Excel)', 'Shaxsiy menejer']
+ }
+};
+const YEARLY_MONTHS_PAID = 10;
+
+// DIQQAT: TO'LOV MA'LUMOTLARI — bularni o'zingiznikiga almashtiring!
+const PAYMENT_INFO = {
+ paymeLink: 'https://payme.uz/',
+ clickLink: 'https://click.uz/',
+ cardNumber: '8600 0000 0000 0000',
+ cardHolder: 'S. Yodgorov',
+ supportTelegram: 'https://t.me/'
+};
+
+function planByKey(key) { return PLANS[key] || PLANS.free; }
+
+function isAdminUser(user) {
+ const u = user || (typeof window !== 'undefined' ? window.currentUser : null);
+ if (!u) return false;
+ return String(u.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase();
+}
+
+function _toDate(v) {
+ if (!v) return null;
+ const d = new Date(v);
+ return isNaN(d.getTime()) ? null : d;
+}
+
+// Foydalanuvchining amaldagi obuna holati
+function getAccessState() {
+ // Demo/lokal rejim (hisob yo'q) — to'liq imkoniyat
+ if (typeof window !== 'undefined' && !window.currentUser) {
+  return {
+   status: 'demo', planKey: 'business', plan: PLANS.business,
+   isActive: true, isAdmin: false, daysLeft: 0,
+   productLimit: Infinity, trialEndsAt: null, subscription: {}
+  };
+ }
+ const data = (APP.subscriptionData) || {};
+ const sub = data.subscription || {};
+ const now = Date.now();
+ const trialEnd = _toDate(data.trialEndsAt);
+ const subEnd = _toDate(sub.expiresAt);
+
+ let status = 'free';
+ let activePlan = 'free';
+ if (sub && sub.status === 'active' && subEnd && subEnd.getTime() > now) {
+  status = 'active';
+  activePlan = sub.plan || data.plan || 'standard';
+ } else if (trialEnd && trialEnd.getTime() > now) {
+  status = 'trial';
+  activePlan = 'business'; // sinov davrida to'liq imkoniyat
+ } else if ((subEnd && subEnd.getTime() <= now) || (trialEnd && trialEnd.getTime() <= now)) {
+  status = 'expired';
+  activePlan = 'free';
+ } else {
+  status = 'free';
+  activePlan = 'free';
+ }
+ const plan = planByKey(activePlan);
+ const daysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - now) / 86400000)) : 0;
+ return {
+  status, planKey: activePlan, plan,
+  isActive: status === 'active' || status === 'trial',
+  isAdmin: isAdminUser(),
+  trialEndsAt: data.trialEndsAt || null,
+  subscription: sub,
+  productLimit: plan.productLimit,
+  daysLeft
+ };
+}
+
+function canAddProduct() {
+ const acc = getAccessState();
+ if (acc.productLimit === Infinity) return true;
+ return (APP.products ? APP.products.length : 0) < acc.productLimit;
+}
+
+function planStatusLabel(acc) {
+ if (!acc) acc = getAccessState();
+ if (acc.status === 'trial') return `Sinov: ${acc.daysLeft} kun qoldi`;
+ if (acc.status === 'active') return `${acc.plan.name} tarif faol`;
+ if (acc.status === 'expired') return "Obuna muddati tugagan";
+ if (acc.status === 'demo') return 'Demo rejim';
+ return "Bepul tarif";
 }
 
 function normalizeProduct(p) {
@@ -816,18 +924,36 @@ async function ensureUserProfile(user) {
   const { doc, getDoc, setDoc } = window.firebaseFns;
   const ref = doc(window.firebaseDB, 'users', user.uid);
   const snap = await getDoc(ref);
+  const nowIso = new Date().toISOString();
   const base = {
    uid: user.uid,
    displayName: user.displayName || '',
    email: user.email || '',
    photoURL: user.photoURL || '',
-   lastLoginAt: new Date().toISOString(),
-   updatedAt: new Date().toISOString()
+   lastLoginAt: nowIso,
+   updatedAt: nowIso
   };
   if (!snap.exists()) {
-   await setDoc(ref, { ...base, shopName: '', createdAt: new Date().toISOString() }, { merge: true });
+   const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 86400000).toISOString();
+   const profile = {
+    ...base,
+    shopName: '',
+    createdAt: nowIso,
+    plan: 'free',
+    trialEndsAt,
+    subscription: { status: 'trial', plan: '', startedAt: nowIso, expiresAt: '' }
+   };
+   await setDoc(ref, profile, { merge: true });
+   APP.subscriptionData = profile;
   } else {
    await setDoc(ref, base, { merge: true });
+   APP.subscriptionData = { ...snap.data(), ...base };
+  }
+  // Admin bo'lsa, allowlist hujjatini ta'minlaymiz (rules uchun qo'shimcha)
+  if (isAdminUser(user) && window.firebaseFns.setDoc) {
+   try {
+    await setDoc(doc(window.firebaseDB, 'admins', user.uid), { email: user.email, updatedAt: nowIso }, { merge: true });
+   } catch (e) { /* rules ruxsat bermasa e'tiborsiz */ }
   }
  } catch (e) {
   console.warn('Profil yangilash xato:', e);
@@ -958,6 +1084,7 @@ function renderUserMenu() {
   }
  }
  renderSettingsProfile();
+ renderSubscriptionUI();
 }
 
 function renderSettingsProfile() {
@@ -1143,6 +1270,117 @@ async function handleChangePassword() {
   else if (code === 'auth/weak-password') setHint('Yangi parol juda kuchsiz.');
   else if (code === 'auth/requires-recent-login') setHint('Xavfsizlik uchun qayta kirib, qayta urinib ko\'ring.');
   else setHint('Parolni yangilab bo\'lmadi. Qayta urinib ko\'ring.');
+ }
+}
+
+// ─────────────────────────────────────────────
+// SUBSCRIPTION UI / PAYWALL
+// ─────────────────────────────────────────────
+let _selectedPlan = null;
+
+function renderSubscriptionUI() {
+ const acc = getAccessState();
+ const planNameEl = document.getElementById('subscriptionPlanName');
+ const statusEl = document.getElementById('subscriptionStatusText');
+ if (planNameEl) planNameEl.textContent = acc.plan.name + ' tarif';
+ if (statusEl) {
+  if (acc.status === 'trial') statusEl.textContent = `Bepul sinov • ${acc.daysLeft} kun qoldi`;
+  else if (acc.status === 'active') statusEl.textContent = acc.subscription.expiresAt ? ('Faol • ' + formatDate(acc.subscription.expiresAt) + ' gacha') : 'Faol';
+  else if (acc.status === 'expired') statusEl.textContent = 'Muddati tugagan — yangilang';
+  else if (acc.status === 'demo') statusEl.textContent = 'Demo rejim (hisobsiz)';
+  else statusEl.textContent = 'Bepul tarif';
+ }
+ const banner = document.getElementById('subBanner');
+ const bText = document.getElementById('subBannerText');
+ if (banner && bText) {
+  if (acc.status === 'trial') {
+   bText.textContent = `Bepul sinov: ${acc.daysLeft} kun qoldi`;
+   banner.classList.remove('hidden');
+  } else if (acc.status === 'expired') {
+   bText.textContent = 'Obuna muddati tugagan — cheklovlar faol';
+   banner.classList.remove('hidden');
+  } else {
+   banner.classList.add('hidden');
+  }
+ }
+}
+
+function renderPaywallPlans() {
+ const container = document.getElementById('planCards');
+ if (!container) return;
+ const acc = getAccessState();
+ container.innerHTML = Object.values(PLANS).map(p => {
+  const isCurrent = acc.planKey === p.key && acc.status !== 'trial';
+  const popular = p.key === 'standard';
+  const features = p.features.map(f => `<li>${escHtml(f)}</li>`).join('');
+  const btn = p.key === 'free'
+   ? `<button type="button" class="btn-secondary" ${isCurrent ? 'disabled' : ''}>${isCurrent ? 'Joriy tarif' : 'Bepul tarif'}</button>`
+   : `<button type="button" class="btn-primary" onclick="choosePlan('${p.key}')">${isCurrent ? 'Joriy — uzaytirish' : 'Tanlash'}</button>`;
+  return `<div class="plan-card ${isCurrent ? 'current' : ''} ${popular ? 'popular' : ''}">
+    ${popular ? '<span class="plan-badge">Mashhur</span>' : ''}
+    <div class="plan-card-head"><span class="plan-card-name">${escHtml(p.name)}</span><span class="plan-card-price">${escHtml(p.priceLabel)}</span></div>
+    <ul class="plan-card-features">${features}</ul>
+    ${btn}
+  </div>`;
+ }).join('');
+}
+
+function openPaywall() {
+ renderPaywallPlans();
+ _selectedPlan = null;
+ const payArea = document.getElementById('paywallPayArea');
+ const pending = document.getElementById('paywallPending');
+ if (payArea) payArea.classList.add('hidden');
+ if (pending) pending.classList.add('hidden');
+ openModal('paywallModal');
+}
+
+function choosePlan(planKey) {
+ const plan = planByKey(planKey);
+ if (!plan || plan.price === 0) return;
+ _selectedPlan = planKey;
+ const area = document.getElementById('paywallPayArea');
+ const title = document.getElementById('paywallPayTitle');
+ if (title) title.textContent = `${plan.name} — ${plan.priceLabel}`;
+ const pl = document.getElementById('paymeLink');
+ const cl = document.getElementById('clickLink');
+ if (pl) pl.href = PAYMENT_INFO.paymeLink;
+ if (cl) cl.href = PAYMENT_INFO.clickLink;
+ const cn = document.getElementById('payCardNumber');
+ const ch = document.getElementById('payCardHolder');
+ if (cn) cn.textContent = PAYMENT_INFO.cardNumber;
+ if (ch) ch.textContent = PAYMENT_INFO.cardHolder;
+ if (area) { area.classList.remove('hidden'); }
+}
+
+async function submitPaymentRequest() {
+ if (!_selectedPlan) { showToast('Avval tarif tanlang'); return; }
+ const plan = planByKey(_selectedPlan);
+ if (!window.currentUser) { showToast("Obuna uchun tizimga kiring", 'warning'); return; }
+ const req = {
+  uid: window.currentUser.uid,
+  email: window.currentUser.email || '',
+  displayName: window.currentUser.displayName || '',
+  shopName: (APP.settings && APP.settings.shopName) || '',
+  plan: plan.key,
+  planName: plan.name,
+  amount: plan.price,
+  method: 'manual',
+  status: 'pending',
+  createdAt: new Date().toISOString()
+ };
+ try {
+  if (!window.useDemo && window.firebaseDB && window.firebaseFns && window.firebaseFns.addDoc) {
+   await window.firebaseFns.addDoc(window.firebaseFns.collection(window.firebaseDB, 'paymentRequests'), req);
+  }
+  const payArea = document.getElementById('paywallPayArea');
+  const pending = document.getElementById('paywallPending');
+  if (payArea) payArea.classList.add('hidden');
+  if (pending) pending.classList.remove('hidden');
+  showToast("To'lov so'rovi yuborildi. Admin tasdiqlaydi.", 'success');
+ } catch (e) {
+  console.error('paymentRequest xato:', e);
+  showToast("So'rov yuborilmadi. Internetni tekshiring.", 'error');
  }
 }
 
@@ -3122,6 +3360,14 @@ async function saveProduct() {
  if (existing) {
  showToast(`Bu shtrix-kod allaqachon: ${existing.name}`);
  return;
+ }
+
+ // Obuna limiti (faqat yangi mahsulot qo'shishda)
+ if (!APP.editingProductId && typeof canAddProduct === 'function' && !canAddProduct()) {
+  const acc = getAccessState();
+  showToast(`Bepul tarifda ${acc.productLimit} ta mahsulot chegarasi. Tarifni oshiring.`, 'warning');
+  if (typeof openPaywall === 'function') openPaywall();
+  return;
  }
 
  const roundedPrice = Math.round(price);
@@ -6719,6 +6965,14 @@ window.removeProfileAvatar = removeProfileAvatar;
 window.handleProfileAvatarFile = handleProfileAvatarFile;
 window.saveProfile = saveProfile;
 window.handleChangePassword = handleChangePassword;
+window.openPaywall = openPaywall;
+window.choosePlan = choosePlan;
+window.submitPaymentRequest = submitPaymentRequest;
+window.renderSubscriptionUI = renderSubscriptionUI;
+window.getAccessState = getAccessState;
+window.canAddProduct = canAddProduct;
+window.isAdminUser = isAdminUser;
+window.PLANS = PLANS;
 window.saveUserMeta = saveUserMeta;
 window.loadUserMeta = loadUserMeta;
 window.loadUserCollections = loadUserCollections;

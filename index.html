@@ -244,6 +244,12 @@
       </div>
     </header>
 
+    <!-- Obuna / sinov banneri -->
+    <div id="subBanner" class="sub-banner hidden">
+      <span id="subBannerText"></span>
+      <button type="button" class="btn-primary btn-xs" onclick="openPaywall()">Tariflar</button>
+    </div>
+
     <div class="pages">
 
       <!-- PAGE: SCANNER -->
@@ -674,6 +680,16 @@
                 <div class="settings-profile-email" id="settingsProfileEmail"></div>
               </div>
               <button type="button" class="btn-primary btn-sm" onclick="openProfileModal()">Tahrirlash</button>
+            </div>
+          </div>
+          <h3 class="settings-group-title">Obuna va tarif</h3>
+          <div class="settings-group">
+            <div class="subscription-card">
+              <div class="subscription-main">
+                <div class="subscription-plan" id="subscriptionPlanName">Bepul</div>
+                <div class="subscription-status" id="subscriptionStatusText">—</div>
+              </div>
+              <button type="button" class="btn-primary btn-sm" onclick="openPaywall()">Tarifni oshirish</button>
             </div>
           </div>
           <h3 class="settings-group-title">Til / Язык</h3>
@@ -1816,6 +1832,43 @@
       <div class="modal-footer">
         <button type="button" class="btn-secondary" onclick="closeModal('profileModal')">Bekor qilish</button>
         <button type="button" class="btn-primary" onclick="saveProfile()">Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Paywall / Tariflar Modal -->
+  <div class="modal-overlay" id="paywallModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3>Tarifni tanlang</h3>
+        <button class="modal-close" onclick="closeModal('paywallModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="paywall-intro">Yangi hisoblar uchun <b>14 kunlik bepul sinov</b> avtomatik boshlanadi. Sinov tugagach, cheksiz imkoniyatlar uchun tarif tanlang.</p>
+        <div class="plan-cards" id="planCards"></div>
+        <div id="paywallPayArea" class="paywall-pay-area hidden">
+          <h4 class="profile-subtitle" id="paywallPayTitle">To'lov</h4>
+          <div class="paywall-methods">
+            <a id="paymeLink" class="pay-method payme" href="#" target="_blank" rel="noopener">Payme orqali</a>
+            <a id="clickLink" class="pay-method click" href="#" target="_blank" rel="noopener">Click orqali</a>
+          </div>
+          <div class="paywall-card-info">
+            <div><span>Karta raqami:</span> <b id="payCardNumber">—</b></div>
+            <div><span>Karta egasi:</span> <b id="payCardHolder">—</b></div>
+            <div class="settings-hint">To'lov izohida emailingizni yozing, so'ng "To'lov qildim" tugmasini bosing.</div>
+          </div>
+          <button type="button" class="btn-primary btn-full" onclick="submitPaymentRequest()">To'lov qildim</button>
+        </div>
+        <div id="paywallPending" class="paywall-pending hidden">
+          <div class="paywall-pending-icon">✓</div>
+          <p>To'lov so'rovingiz yuborildi. Admin tasdiqlagach obuna avtomatik faollashadi.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('paywallModal')">Yopish</button>
       </div>
     </div>
   </div>

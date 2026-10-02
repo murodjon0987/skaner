@@ -1,27 +1,46 @@
 rules_version = '2';
 
 // =============================================================
-// ScanPOS – Firestore Security Rules (multi-tenant)
+// ScanPOS – Firestore Security Rules
 // =============================================================
-// Har bir foydalanuvchi FAQAT o'zining `users/{uid}` hujjati va
-// uning ichidagi barcha ma'lumotlarni o'qiy va yozа oladi.
-// Boshqa foydalanuvchining ma'lumotlariga kirish taqiqlanadi.
+// - Har bir user faqat o'z `users/{uid}` ostidagi ma'lumotlarini boshqaradi.
+// - Admin (ADMIN_EMAIL) barcha userlarni va to'lov so'rovlarini boshqaradi.
+// - paymentRequests: user o'zinikini yarata oladi, admin tasdiqlaydi.
 //
-// Joylashtirish:
-//   firebase deploy --only firestore:rules
-// yoki Firebase Console → Firestore Database → Rules ga nusxalash.
+// Joylashtirish: firebase deploy --only firestore:rules
+// (yoki Firebase Console → Firestore → Rules)
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Foydalanuvchi profili
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isSignedIn() {
+      return request.auth != null;
+    }
 
-      // Foydalanuvchiga tegishli barcha sub-kolleksiyalar
-      // (products, bills, debtors, debts, expenses, supplies, quickItems, heldCarts, meta)
+    // Admin email (app.js dagi ADMIN_EMAIL bilan bir xil bo'lishi kerak)
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'syodgorov47@gmail.com';
+    }
+
+    // Admin allowlist hujjatlari
+    match /admins/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update: if isAdmin() && request.auth.uid == uid;
+    }
+
+    // Obuna uchun to'lov so'rovlari (manual to'lov)
+    match /paymentRequests/{reqId} {
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    // Foydalanuvchi profili va uning barcha sub-kolleksiyalari
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
       match /{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       }
     }
 

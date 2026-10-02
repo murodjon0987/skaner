@@ -4252,3 +4252,74 @@ textarea {
 .settings-profile-info { flex: 1; min-width: 0; }
 .settings-profile-name { font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .settings-profile-email { font-size: 0.75rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ====== SUBSCRIPTION ====== */
+.sub-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.18), rgba(6, 182, 212, 0.18));
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--text);
+  flex-shrink: 0;
+}
+.sub-banner.hidden { display: none !important; }
+.sub-banner .btn-xs { padding: 3px 10px; font-size: 0.72rem; border-radius: 8px; }
+
+.subscription-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.subscription-plan { font-weight: 800; font-size: 0.95rem; }
+.subscription-status { font-size: 0.75rem; color: var(--text3); margin-top: 2px; }
+
+.plan-cards { display: flex; flex-direction: column; gap: 10px; }
+.plan-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--bg3);
+  position: relative;
+}
+.plan-card.current { border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple) inset; }
+.plan-card.popular { border-color: rgba(6, 182, 212, 0.6); }
+.plan-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.plan-card-name { font-weight: 800; font-size: 1rem; }
+.plan-card-price { font-weight: 800; color: var(--cyan); font-size: 0.9rem; }
+.plan-card-features { list-style: none; margin: 10px 0 12px; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.plan-card-features li { font-size: 0.8rem; color: var(--text2); display: flex; gap: 6px; align-items: flex-start; }
+.plan-card-features li::before { content: '✓'; color: var(--green); font-weight: 800; }
+.plan-badge { position: absolute; top: -8px; right: 12px; background: var(--grad); color: #fff; font-size: 0.62rem; font-weight: 800; padding: 2px 8px; border-radius: 99px; }
+.plan-card .btn-primary, .plan-card .btn-secondary { width: 100%; }
+
+.paywall-pay-area { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.paywall-methods { display: flex; gap: 10px; margin-bottom: 12px; }
+.pay-method { flex: 1; text-align: center; padding: 12px; border-radius: 12px; font-weight: 700; font-size: 0.85rem; text-decoration: none; color: #fff; }
+.pay-method.payme { background: linear-gradient(135deg, #33cccc, #00a3c4); }
+.pay-method.click { background: linear-gradient(135deg, #0072ff, #00c6ff); }
+.paywall-card-info { background: var(--bg3); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.8rem; color: var(--text2); display: flex; flex-direction: column; gap: 4px; }
+.paywall-card-info b { color: var(--text); }
+.paywall-pending { text-align: center; padding: 20px 10px; }
+.paywall-pending-icon { width: 46px; height: 46px; border-radius: 50%; background: rgba(34, 197, 94, 0.15); color: var(--green); display: flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 800; margin: 0 auto 10px; }
+.paywall-intro { font-size: 0.82rem; color: var(--text2); margin-bottom: 14px; }
+
+/* ====== ADMIN PANEL ====== */
+.admin-tabs { display: flex; gap: 6px; margin-bottom: 12px; background: var(--bg3); padding: 4px; border-radius: 10px; }
+.admin-tab { flex: 1; padding: 8px; border: none; background: transparent; color: var(--text2); font-weight: 600; font-size: 0.8rem; border-radius: 7px; cursor: pointer; }
+.admin-tab.active { background: var(--card); color: var(--text); }
+.admin-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.admin-metric { background: var(--bg3); border-radius: 10px; padding: 10px 12px; }
+.admin-metric-val { font-weight: 800; font-size: 1.1rem; }
+.admin-metric-label { font-size: 0.7rem; color: var(--text3); }
+.admin-list { display: flex; flex-direction: column; gap: 8px; max-height: 45vh; overflow-y: auto; }
+.admin-user-row { background: var(--bg3); border-radius: 10px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.admin-user-info { min-width: 0; }
+.admin-user-name { font-weight: 700; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.admin-user-meta { font-size: 0.72rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.admin-user-actions { display: flex; gap: 6px; flex-shrink: 0; }
