@@ -297,7 +297,27 @@
   window.scanposAuth = {
     init: initAuth,
     signOut: window.handleSignOut,
-    get user() { return auth && auth.currentUser; }
+    get user() { return auth && auth.currentUser; },
+    get isPasswordProvider() {
+      const u = auth && auth.currentUser;
+      if (!u || !u.providerData) return false;
+      return u.providerData.some(p => p.providerId === 'password');
+    },
+    async updateDisplayName(name) {
+      if (!auth || !auth.currentUser || !name) return;
+      await authMod.updateProfile(auth.currentUser, { displayName: name });
+    },
+    async updatePhotoURL(url) {
+      if (!auth || !auth.currentUser) return;
+      await authMod.updateProfile(auth.currentUser, { photoURL: url || null });
+    },
+    async changePassword(currentPassword, newPassword) {
+      const u = auth && auth.currentUser;
+      if (!u || !u.email) throw new Error('no-user');
+      const cred = authMod.EmailAuthProvider.credential(u.email, currentPassword);
+      await authMod.reauthenticateWithCredential(u, cred);
+      await authMod.updatePassword(u, newPassword);
+    }
   };
 
   // app.js yuklangach ishga tushamiz (window.initApp mavjud bo'lishi uchun)

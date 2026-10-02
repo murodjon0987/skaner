@@ -804,7 +804,6 @@ window.initApp = async function () {
  updateVoiceBtn();
  updateTorchUI();
  updateNetworkStatus();
- checkBackupReminder();
  renderUserMenu();
 };
 
@@ -939,7 +938,7 @@ function renderUserMenu() {
 
  const name = user.displayName || (user.email ? user.email.split('@')[0] : 'Foydalanuvchi');
  const email = user.email || '';
- const photo = user.photoURL || '';
+ const photo = (APP.settings && APP.settings.profilePhoto) || user.photoURL || '';
  const initial = (name.charAt(0) || 'S').toUpperCase();
 
  const img = document.getElementById('userAvatarImg');
@@ -967,6 +966,155 @@ function openProfileSettings() {
  const dd = document.getElementById('userMenuDropdown');
  if (dd) dd.classList.add('hidden');
  if (typeof showPage === 'function') showPage('settings');
+}
+
+// ─────────────────────────────────────────────
+// PROFILE EDIT (Profilni tahrirlash)
+// ─────────────────────────────────────────────
+let _profilePhotoData = '';
+
+function _setInputValue(id, val) {
+ const el = document.getElementById(id);
+ if (el) el.value = (val == null) ? '' : val;
+}
+
+function renderProfileAvatar(photo, name) {
+ const img = document.getElementById('profileAvatarImg');
+ const initial = document.getElementById('profileAvatarInitial');
+ const rmBtn = document.getElementById('profileAvatarRemoveBtn');
+ if (photo) {
+  if (img) { img.src = photo; img.classList.remove('hidden'); }
+  if (initial) initial.classList.add('hidden');
+  if (rmBtn) rmBtn.style.display = '';
+ } else {
+  if (img) { img.classList.add('hidden'); img.removeAttribute('src'); }
+  if (initial) { initial.textContent = ((name || 'S').charAt(0) || 'S').toUpperCase(); initial.classList.remove('hidden'); }
+  if (rmBtn) rmBtn.style.display = 'none';
+ }
+}
+
+function openProfileModal() {
+ const dd = document.getElementById('userMenuDropdown');
+ if (dd) dd.classList.add('hidden');
+ const user = window.currentUser;
+ const name = (user && (user.displayName || (user.email ? user.email.split('@')[0] : ''))) || '';
+ const email = (user && user.email) || '';
+ const photo = (APP.settings && APP.settings.profilePhoto) || (user && user.photoURL) || '';
+ _profilePhotoData = photo;
+ _setInputValue('profileName', name);
+ _setInputValue('profileEmail', email);
+ _setInputValue('profileShopName', APP.settings.shopName || '');
+ _setInputValue('profileShopAddress', APP.settings.shopAddress || '');
+ _setInputValue('profileShopPhone', APP.settings.shopPhone || '');
+ _setInputValue('profileCurrentPassword', '');
+ _setInputValue('profileNewPassword', '');
+ const pwdHint = document.getElementById('profilePasswordHint');
+ if (pwdHint) pwdHint.textContent = '';
+ renderProfileAvatar(photo, name);
+
+ const isPwd = Boolean(window.scanposAuth && window.scanposAuth.isPasswordProvider);
+ const pwdSection = document.getElementById('profilePasswordSection');
+ if (pwdSection) pwdSection.style.display = isPwd ? '' : 'none';
+
+ openModal('profileModal');
+}
+
+function triggerProfileAvatar() {
+ const input = document.getElementById('profileAvatarInput');
+ if (input) input.click();
+}
+
+async function handleProfileAvatarFile(event) {
+ const file = event && event.target && event.target.files && event.target.files[0];
+ if (!file) return;
+ try {
+  const dataUrl = await compressImage(file, 160, 160, 0.82);
+  _profilePhotoData = dataUrl;
+  const nameEl = document.getElementById('profileName');
+  renderProfileAvatar(_profilePhotoData, nameEl ? nameEl.value : '');
+ } catch (e) {
+  console.warn('Avatar xato:', e);
+  showToast('Rasmni o\'qib bo\'lmadi');
+ } finally {
+  if (event && event.target) event.target.value = '';
+ }
+}
+
+function removeProfileAvatar() {
+ _profilePhotoData = '';
+ const nameEl = document.getElementById('profileName');
+ renderProfileAvatar('', nameEl ? nameEl.value : '');
+}
+
+async function saveProfile() {
+ const name = (document.getElementById('profileName')?.value || '').trim();
+ const shopName = (document.getElementById('profileShopName')?.value || '').trim();
+ const shopAddress = (document.getElementById('profileShopAddress')?.value || '').trim();
+ const shopPhone = (document.getElementById('profileShopPhone')?.value || '').trim();
+
+ if (name && window.scanposAuth && window.scanposAuth.updateDisplayName) {
+  try { await window.scanposAuth.updateDisplayName(name); } catch (e) { console.warn(e); }
+ }
+ if (window.scanposAuth && window.scanposAuth.updatePhotoURL) {
+  if (_profilePhotoData && /^https?:\/\//.test(_profilePhotoData)) {
+   try { await window.scanposAuth.updatePhotoURL(_profilePhotoData); } catch (e) {}
+  }
+ }
+
+ if (window.currentUser) {
+  if (name) window.currentUser.displayName = name;
+  if (_profilePhotoData && /^https?:\/\//.test(_profilePhotoData)) window.currentUser.photoURL = _profilePhotoData;
+ }
+
+ APP.settings.shopName = shopName;
+ APP.settings.shopAddress = shopAddress;
+ APP.settings.shopPhone = shopPhone;
+ APP.settings.profilePhoto = _profilePhotoData || '';
+ try { localStorage.setItem(nsKey('scanpos_settings'), JSON.stringify(APP.settings)); } catch (e) {}
+
+ _setInputValue('shopName', shopName);
+ _setInputValue('shopAddress', shopAddress);
+ _setInputValue('shopPhone', shopPhone);
+
+ if (!window.useDemo && window.firebaseDB && window.currentUser && window.firebaseFns) {
+  try {
+   const { doc, setDoc } = window.firebaseFns;
+   await setDoc(doc(window.firebaseDB, 'users', window.currentUser.uid), {
+    displayName: name,
+    photoData: _profilePhotoData || '',
+    shopName, shopAddress, shopPhone,
+    updatedAt: new Date().toISOString()
+   }, { merge: true });
+  } catch (e) { console.warn('Profil saqlash xato:', e); }
+ }
+ if (typeof saveUserMeta === 'function') saveUserMeta();
+
+ renderUserMenu();
+ closeModal('profileModal');
+ showToast('Profil saqlandi');
+}
+
+async function handleChangePassword() {
+ const cur = document.getElementById('profileCurrentPassword')?.value || '';
+ const nw = document.getElementById('profileNewPassword')?.value || '';
+ const hint = document.getElementById('profilePasswordHint');
+ const setHint = (m) => { if (hint) hint.textContent = m; };
+ if (!cur || !nw) { setHint('Joriy va yangi parolni kiriting.'); return; }
+ if (nw.length < 6) { setHint('Yangi parol kamida 6 belgidan iborat bo\'lishi kerak.'); return; }
+ if (!window.scanposAuth || !window.scanposAuth.changePassword) { setHint('Parolni o\'zgartirish mavjud emas.'); return; }
+ try {
+  await window.scanposAuth.changePassword(cur, nw);
+  _setInputValue('profileCurrentPassword', '');
+  _setInputValue('profileNewPassword', '');
+  setHint('Parol muvaffaqiyatli yangilandi.');
+  showToast('Parol yangilandi');
+ } catch (e) {
+  const code = e && e.code;
+  if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') setHint('Joriy parol noto\'g\'ri.');
+  else if (code === 'auth/weak-password') setHint('Yangi parol juda kuchsiz.');
+  else if (code === 'auth/requires-recent-login') setHint('Xavfsizlik uchun qayta kirib, qayta urinib ko\'ring.');
+  else setHint('Parolni yangilab bo\'lmadi. Qayta urinib ko\'ring.');
+ }
 }
 
 if (typeof window !== 'undefined') {
@@ -1505,7 +1653,7 @@ function addQuickItemToCart(itemId, event) {
  id: item.id,
  name: item.name,
  price: Number(item.price),
- barcode: item.barcode || ('QUICK_' + item.id),
+ barcode: '',
  category: item.category || 'boshqa',
  isQuick: true,
  trackStock: false
@@ -1759,7 +1907,7 @@ function updateCartUI() {
             <div class="item-name" title="${escHtml(item.name)}">${escHtml(item.name)}</div>
             <div class="item-meta">
               <span class="item-price-each">${formatPrice(item.price)}/${escHtml(item.unit || 'ta')}</span>
-              ${item.barcode ? `<span class="item-barcode-tag">${escHtml(item.barcode)}</span>` : ''}
+              ${(item.barcode && !item.isQuick && !String(item.barcode).startsWith('QUICK_')) ? `<span class="item-barcode-tag">${escHtml(item.barcode)}</span>` : ''}
             </div>
           </div>
           <button type="button" class="item-remove" onclick="removeFromCart('${item.id}')" title="Savatdan o'chirish" aria-label="O'chirish">${icon('x', 14)}</button>
@@ -3200,38 +3348,6 @@ async function deleteDebtFromDB(debtId) {
  }
 }
 
-async function deleteAllProducts() {
- if (!confirm('BARCHA mahsulotlarni o\'chirishni tasdiqlaysizmi?')) return;
-
- // Firebase rejimida Firestore'dan ham batch orqali o'chirish
- if (!window.useDemo && window.firebaseDB && window.firebaseFns) {
- try {
-  const { getDocs, writeBatch } = window.firebaseFns;
-  const snapshot = await getDocs(userCol('products'));
- if (!snapshot.empty) {
- let batch = writeBatch(window.firebaseDB);
- let count = 0;
- for (const docSnap of snapshot.docs) {
- batch.delete(docSnap.ref);
- count++;
- if (count % 400 === 0) {
- await batch.commit();
- batch = writeBatch(window.firebaseDB);
- }
- }
- await batch.commit();
- }
- } catch (e) {
- console.error('Firestore mahsulotlarni o\'chirish xatosi:', e);
- }
- }
-
- APP.products = [];
- saveLocalData();
- renderProducts();
- showToast('Barcha mahsulotlar o\'chirildi');
-}
-
 function filterProducts(query) {
  const q = query.toLowerCase();
  const filtered = APP.products.filter(p =>
@@ -4062,181 +4178,6 @@ function printShiftReport() {
  window.print();
 }
 
-// ─────────────────────────────────────────────
-// BACKUP & RESTORE (ZAXIRA VA TIKLASH)
-// ─────────────────────────────────────────────
-async function exportBackupJSON() {
- try {
- const backupData = {
- version: 2,
- exportedAt: new Date().toISOString(),
- products: APP.products || [],
- bills: APP.bills || [],
- debtors: APP.debtors || [],
- debts: APP.debts || [],
- settings: APP.settings || {},
- categoryPrices: APP.categoryPrices || {},
- quickItems: APP.quickItems || [],
- expenses: APP.expenses || []
- };
-
- const str = JSON.stringify(backupData, null, 2);
- const blob = new Blob([str], { type: 'application/json' });
- const url = URL.createObjectURL(blob);
- const a = document.createElement('a');
- const dateStr = new Date().toISOString().slice(0, 10);
- a.href = url;
- a.download = `scanpos-backup-${dateStr}.json`;
- document.body.appendChild(a);
- a.click();
- document.body.removeChild(a);
- URL.revokeObjectURL(url);
-
- localStorage.setItem(nsKey('scanpos_last_backup_time'), Date.now().toString());
- showToast('Zaxira nusxa muvaffaqiyatli yuklab olindi!');
- } catch (err) {
- console.error('Backup eksport xato:', err);
- showToast('Zaxira olishda xatolik yuz berdi');
- }
-}
-
-function triggerRestoreJSON() {
- const input = document.getElementById('backupFileInput');
- if (input) input.click();
-}
-
-async function handleRestoreFile(event) {
- const file = event.target?.files?.[0];
- if (!file) return;
-
- const reader = new FileReader();
- reader.onload = async (e) => {
- try {
- const data = JSON.parse(e.target.result);
- if (!data || (!data.products && !data.bills && !data.version)) {
- showToast('Notoʻgʻri zaxira fayl formati!', 'error');
- return;
- }
-
- const shouldMerge = confirm(
- 'Zaxiradagi maʼlumotlarni qanday tiklamoqchisiz?\n\n' +
- 'OK: Mavjud maʼlumotlar bilan BIRLASHTIRISH (Merge)\n' +
- 'BEKOR QILISH (Cancel): Barchasini toʻliq ALMASHTIRISH (Replace)'
- );
-
- if (shouldMerge) {
- // Merge
- const existingProdIds = new Set((APP.products || []).map(p => p.id));
- (data.products || []).forEach(p => {
- if (!existingProdIds.has(p.id)) APP.products.push(p);
- });
-
- const existingBillIds = new Set((APP.bills || []).map(b => b.id));
- (data.bills || []).forEach(b => {
- if (!existingBillIds.has(b.id)) APP.bills.push(b);
- });
-
- const existingDebtorIds = new Set((APP.debtors || []).map(d => d.id));
- (data.debtors || []).forEach(d => {
- if (!existingDebtorIds.has(d.id)) APP.debtors.push(d);
- });
-
- const existingDebtIds = new Set((APP.debts || []).map(d => d.id));
- (data.debts || []).forEach(d => {
- if (!existingDebtIds.has(d.id)) APP.debts.push(d);
- });
-
- const existingExpenseIds = new Set((APP.expenses || []).map(e => e.id));
- (data.expenses || []).forEach(e => {
- if (!existingExpenseIds.has(e.id)) (APP.expenses = APP.expenses || []).push(e);
- });
- } else {
- // Replace
- if (data.products) APP.products = data.products;
- if (data.bills) APP.bills = data.bills;
- if (data.debtors) APP.debtors = data.debtors;
- if (data.debts) APP.debts = data.debts;
- if (data.expenses) APP.expenses = data.expenses;
- if (data.settings) APP.settings = { ...APP.settings, ...data.settings };
- if (data.categoryPrices) APP.categoryPrices = data.categoryPrices;
- if (data.quickItems) APP.quickItems = data.quickItems;
- }
-
- if (Array.isArray(APP.products)) {
- APP.products.forEach(p => normalizeProduct(p));
- }
-
- await saveLocalData();
- await saveNasiyaData();
- renderProducts();
- renderBills();
- updateProductStats();
- updateNasiyaBadge();
-
- showToast('Zaxira nusxa muvaffaqiyatli tiklandi!');
- } catch (err) {
- console.error('Tiklash xatosi:', err);
- showToast('Faylni oʻqishda xatolik yuz berdi: ' + err.message, 'error');
- } finally {
- event.target.value = '';
- }
- };
- reader.readAsText(file);
-}
-
-function exportBillsCSV() {
- try {
- if (!APP.bills || APP.bills.length === 0) {
- showToast('Eksport qilish uchun cheklar yoʻq');
- return;
- }
-
- const headers = ['Chek ID', 'Sana', 'Tovarlar', 'Oraliq summa', 'Chegirma', 'QQS', 'Jami summa', 'To\'lov usuli', 'Mijoz', 'Qaytarilgan summa'];
- const rows = APP.bills.map(b => {
- const itemsStr = (b.items || []).map(i => `${i.name} (${i.qty}ta)`).join('; ');
- const refunded = (b.refunds || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
- return [
- `#${b.id.slice(-8).toUpperCase()}`,
- `"${formatDate(b.timestamp)}"`,
- `"${itemsStr.replace(/"/g, '""')}"`,
- b.subtotal || 0,
- b.discount || 0,
- b.tax || 0,
- b.total || 0,
- b.paymentMethod || '',
- `"${(b.debtorName || '').replace(/"/g, '""')}"`,
- refunded
- ];
- });
-
- const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
- const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
- const url = URL.createObjectURL(blob);
- const a = document.createElement('a');
- a.href = url;
- a.download = `scanpos-bills-${new Date().toISOString().slice(0, 10)}.csv`;
- document.body.appendChild(a);
- a.click();
- document.body.removeChild(a);
- URL.revokeObjectURL(url);
- showToast('CSV fayl yuklab olindi!');
- } catch (err) {
- console.error('CSV eksport xato:', err);
- showToast('CSV eksportda xatolik yuz berdi');
- }
-}
-
-function checkBackupReminder() {
- const last = parseInt(localStorage.getItem(nsKey('scanpos_last_backup_time')) || '0', 10);
- const now = Date.now();
- const sevenDays = 7 * 24 * 60 * 60 * 1000;
- if (!last || (now - last > sevenDays)) {
- setTimeout(() => {
- showToast('7 kundan beri zaxira nusxa olinmagan! Sozlamalardan zaxirani yuklab oling.', 'warning');
- }, 3000);
- }
-}
-
 async function clearAllBills() {
  if (APP.bills.length === 0) return;
  if (!confirm('Barcha cheklar tarixini o\'chirishni tasdiqlaysizmi?')) return;
@@ -4268,31 +4209,6 @@ async function clearAllBills() {
  saveLocalData();
  renderBills();
  showToast('Cheklar tarixi tozalandi');
-}
-
-// ─────────────────────────────────────────────
-// DEMO PRODUCTS
-// ─────────────────────────────────────────────
-async function loadDemoProducts() {
- const demoProducts = [
- { id: generateId(), name: 'Coca-Cola 500ml', barcode: '5449000000996', price: 8000, stock: 48, category: 'ichimlik', image: 'https://images.openfoodfacts.org/images/products/544/900/000/0996/front_en.1129.400.jpg', createdAt: new Date().toISOString() },
- { id: generateId(), name: 'Pepsi Cola Can', barcode: '0012000000133', price: 9000, stock: 35, category: 'ichimlik', image: 'https://images.openfoodfacts.org/images/products/001/200/000/0133/front_fr.16.400.jpg', createdAt: new Date().toISOString() },
- { id: generateId(), name: 'Snickers 50g', barcode: '5000159461122', price: 7000, stock: 60, category: 'shirinlik', image: 'https://images.openfoodfacts.org/images/products/500/015/946/1122/front_en.357.400.jpg', createdAt: new Date().toISOString() },
- { id: generateId(), name: 'Lay\'s Original 75g', barcode: '0028400064088', price: 15000, stock: 25, category: 'shirinlik', image: 'https://images.openfoodfacts.org/images/products/002/840/006/4088/front_en.17.400.jpg', createdAt: new Date().toISOString() },
- { id: generateId(), name: 'Nutella 400g', barcode: '3017620422003', price: 38000, stock: 20, category: 'shirinlik', image: 'https://images.openfoodfacts.org/images/products/301/762/042/2003/front_en.879.400.jpg', createdAt: new Date().toISOString() },
- { id: generateId(), name: 'Red Bull 250ml', barcode: '9002490100070', price: 18000, stock: 30, category: 'ichimlik', image: 'https://images.openfoodfacts.org/images/products/900/249/010/0070/front_en.245.400.jpg', createdAt: new Date().toISOString() },
- { id: generateId(), name: 'Oreo Prince 300g', barcode: '7622210449283', price: 16000, stock: 40, category: 'shirinlik', image: 'https://images.openfoodfacts.org/images/products/762/221/044/9283/front_en.605.400.jpg', createdAt: new Date().toISOString() },
- { id: generateId(), name: 'Tog\' Suvi 1.5L', barcode: '3274080005003', price: 4000, stock: 100, category: 'ichimlik', image: 'https://images.openfoodfacts.org/images/products/327/408/000/5003/front_en.797.400.jpg', createdAt: new Date().toISOString() },
- { id: generateId(), name: 'Non (1 dona)', barcode: '4607086563499', price: 3000, stock: 20, category: 'oziq', image: null, createdAt: new Date().toISOString() },
- { id: generateId(), name: 'Tuxum (10 dona)', barcode: '4607086563001', price: 28000, stock: 15, category: 'oziq', image: null, createdAt: new Date().toISOString() },
- { id: generateId(), name: 'Sut 1L', barcode: '4607006750018', price: 12000, stock: 30, category: 'sut', image: null, createdAt: new Date().toISOString() },
- { id: generateId(), name: 'Ariel Kapsula', barcode: '8001090544179', price: 75000, stock: 10, category: 'uy', image: null, createdAt: new Date().toISOString() },
- ];
-
- for (const p of demoProducts) {
- await saveProductToDB(p);
- }
- showToast(`${demoProducts.length} ta demo mahsulot haqiqiy rasmlari bilan yuklandi `);
 }
 
 // ─────────────────────────────────────────────
@@ -4648,9 +4564,7 @@ window.saveProduct = saveProduct;
 window.editProduct = editProduct;
 window.editProductById = editProductById;
 window.deleteProduct = deleteProduct;
-window.deleteAllProducts = deleteAllProducts;
 window.filterProducts = filterProducts;
-window.loadDemoProducts = loadDemoProducts;
 window.scanForModal = scanForModal;
 window.lookupBarcodeOnline = lookupBarcodeOnline;
 window.openAddProductModalWithData = openAddProductModalWithData;
@@ -6689,10 +6603,6 @@ window.openShiftCloseModal = openShiftCloseModal;
 window.onShiftDateChange = onShiftDateChange;
 window.calculateCashDiscrepancy = calculateCashDiscrepancy;
 window.printShiftReport = printShiftReport;
-window.exportBackupJSON = exportBackupJSON;
-window.triggerRestoreJSON = triggerRestoreJSON;
-window.handleRestoreFile = handleRestoreFile;
-window.exportBillsCSV = exportBillsCSV;
 window.toggleLowStockFilter = toggleLowStockFilter;
 window.onCheckoutDebtorChange = onCheckoutDebtorChange;
 window.ScanDB = ScanDB;
@@ -6773,6 +6683,12 @@ window.applyLanguage = applyLanguage;
 window.renderUserMenu = renderUserMenu;
 window.toggleUserMenu = toggleUserMenu;
 window.openProfileSettings = openProfileSettings;
+window.openProfileModal = openProfileModal;
+window.triggerProfileAvatar = triggerProfileAvatar;
+window.removeProfileAvatar = removeProfileAvatar;
+window.handleProfileAvatarFile = handleProfileAvatarFile;
+window.saveProfile = saveProfile;
+window.handleChangePassword = handleChangePassword;
 window.saveUserMeta = saveUserMeta;
 window.loadUserMeta = loadUserMeta;
 window.loadUserCollections = loadUserCollections;

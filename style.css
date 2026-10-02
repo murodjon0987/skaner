@@ -967,7 +967,9 @@ body {
   align-items: center;
   gap: 5px;
   padding: 4px 10px;
- .cart-item {
+}
+
+.cart-item {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1191,16 +1193,6 @@ body {
 
 .item-remove:active {
   transform: scale(0.92);
-}
-
-nt: center;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.qty-btn:hover {
-  background: var(--purple);
-  border-color: var(--purple);
 }
 
 .qty-num {
@@ -1484,6 +1476,37 @@ nt: center;
 }
 
 .loading-state,
+.empty-cart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: var(--text2);
+  text-align: center;
+}
+
+.empty-cart-icon {
+  color: var(--text3);
+  opacity: 0.65;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-cart p {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.empty-cart span {
+  font-size: 0.8rem;
+  color: var(--text3);
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -3924,7 +3947,10 @@ textarea {
   position: fixed;
   inset: 0;
   z-index: 9000;
-  background: radial-gradient(1200px 600px at 50% -10%, rgba(168, 85, 247, 0.18), transparent 60%), var(--bg);
+  background:
+    radial-gradient(1000px 520px at 50% -10%, rgba(168, 85, 247, 0.22), transparent 62%),
+    radial-gradient(700px 420px at 90% 110%, rgba(6, 182, 212, 0.16), transparent 60%),
+    var(--bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3933,15 +3959,34 @@ textarea {
 }
 
 .auth-card {
+  position: relative;
+  overflow: hidden;
   width: 100%;
-  max-width: 380px;
+  max-width: 390px;
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: 20px;
-  box-shadow: var(--shadow);
-  padding: 28px 22px 22px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  padding: 30px 24px 24px;
   text-align: center;
   animation: authIn 0.35s ease;
+}
+
+.auth-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--grad);
+}
+
+@media (max-width: 420px) {
+  .auth-screen { padding: 16px 14px calc(16px + var(--sab)); align-items: flex-start; padding-top: max(34px, var(--sat)); }
+  .auth-card { padding: 26px 18px 20px; border-radius: 18px; }
+  .auth-logo { width: 68px; height: 68px; }
+  .auth-title { font-size: 1.55rem; }
 }
 
 @keyframes authIn {
@@ -4110,3 +4155,47 @@ textarea {
 }
 .user-menu-item:hover { background: var(--bg3); }
 .user-menu-item.danger { color: #f87171; }
+
+/* ====== PROFILE MODAL ====== */
+.profile-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.profile-avatar-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg3);
+  border: 2px solid rgba(168, 85, 247, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
+.profile-avatar-preview span { font-size: 1.5rem; font-weight: 800; color: var(--text); }
+
+.profile-avatar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-subtitle {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text3);
+  margin: 18px 0 12px;
+}
+
+#profileEmail[readonly] {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
