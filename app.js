@@ -255,7 +255,7 @@ const PAYMENT_INFO = {
  paymeLink: 'https://payme.uz/',
  clickLink: 'https://click.uz/',
  cardNumber: '4067 0700 0861 0359',
- cardHolder: 'S. Yodgorov',
+ cardHolder: 'SH. Murodjon',
  supportTelegram: 'https://t.me/'
 };
 

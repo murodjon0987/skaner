@@ -1,5 +1,5 @@
 // ScanPOS Service Worker (Offline Cache)
-const CACHE_NAME = 'scanpos-v15';
+const CACHE_NAME = 'scanpos-v16';
 const LOCAL_ASSETS = [
   './',
   './index.html',
