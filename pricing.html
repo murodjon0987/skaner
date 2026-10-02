@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0d0f1a" />
+  <title>ScanPOS – Tariflar va narxlar</title>
+  <meta name="description" content="ScanPOS – O'zbekiston kichik do'konlari uchun smartfon kassa tizimi. Bepul boshlang, o'sganda tarifni tanlang." />
+  <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0f1a; --bg2: #131626; --bg3: #1a1d30; --card: #1e2235;
+      --border: rgba(255, 255, 255, 0.08); --purple: #a855f7; --cyan: #06b6d4;
+      --green: #22c55e; --yellow: #f59e0b; --text: #f1f5f9; --text2: #94a3b8; --text3: #64748b;
+      --grad: linear-gradient(135deg, #a855f7, #06b6d4);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif;
+      line-height: 1.6; -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+    /* NAV */
+    .nav { position: sticky; top: 0; z-index: 50; background: rgba(13,15,26,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+    .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 62px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 1.2rem; }
+    .brand img { width: 32px; height: 32px; border-radius: 9px; }
+    .brand span { background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .nav-links { display: flex; align-items: center; gap: 18px; }
+    .nav-links a { color: var(--text2); font-size: 0.9rem; font-weight: 500; }
+    .nav-links a:hover { color: var(--text); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: none; cursor: pointer; font-family: inherit; font-weight: 700; border-radius: 12px; transition: transform .12s ease, box-shadow .2s ease; }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: var(--grad); color: #fff; padding: 11px 20px; font-size: 0.9rem; box-shadow: 0 8px 24px rgba(168,85,247,0.3); }
+    .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); padding: 10px 18px; font-size: 0.9rem; }
+
+    /* HERO */
+    .hero { text-align: center; padding: 70px 0 50px; position: relative; overflow: hidden; }
+    .hero::before { content: ''; position: absolute; top: -200px; left: 50%; transform: translateX(-50%); width: 800px; height: 500px; background: radial-gradient(closest-side, rgba(168,85,247,0.22), transparent); pointer-events: none; }
+    .hero h1 { font-size: clamp(1.9rem, 5vw, 3.2rem); font-weight: 900; line-height: 1.12; letter-spacing: -1px; position: relative; }
+    .hero h1 em { font-style: normal; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p { color: var(--text2); font-size: clamp(0.95rem, 2.2vw, 1.15rem); max-width: 620px; margin: 16px auto 26px; position: relative; }
+    .hero-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; position: relative; }
+    .hero-note { margin-top: 14px; font-size: 0.8rem; color: var(--text3); }
+    .hero-stats { display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; margin-top: 44px; }
+    .stat b { display: block; font-size: 1.5rem; font-weight: 900; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .stat span { font-size: 0.78rem; color: var(--text3); }
+
+    /* SECTION */
+    .section { padding: 56px 0; }
+    .section-title { text-align: center; font-size: clamp(1.4rem, 3.5vw, 2rem); font-weight: 800; letter-spacing: -0.5px; }
+    .section-sub { text-align: center; color: var(--text2); margin-top: 10px; font-size: 0.95rem; }
+
+    /* FEATURES */
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 36px; }
+    .feature { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
+    .feature-icon { width: 42px; height: 42px; border-radius: 12px; background: rgba(168,85,247,0.14); color: var(--purple); display: flex; align-items: center; justify-content: center; margin-bottom: 12px; font-size: 1.3rem; }
+    .feature h3 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .feature p { color: var(--text2); font-size: 0.85rem; }
+
+    /* PRICING */
+    .pricing { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 40px; align-items: stretch; }
+    .price-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 20px; padding: 26px 22px; display: flex; flex-direction: column; position: relative; }
+    .price-card.popular { border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple), 0 20px 50px rgba(168,85,247,0.18); }
+    .price-card .badge { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: var(--grad); color: #fff; font-size: 0.68rem; font-weight: 800; padding: 4px 12px; border-radius: 99px; letter-spacing: 0.5px; }
+    .price-card h3 { font-size: 1.1rem; font-weight: 800; }
+    .price-amount { margin: 12px 0 4px; font-size: 1.9rem; font-weight: 900; }
+    .price-amount small { font-size: 0.8rem; font-weight: 500; color: var(--text3); }
+    .price-desc { color: var(--text3); font-size: 0.8rem; margin-bottom: 16px; }
+    .price-card ul { list-style: none; display: flex; flex-direction: column; gap: 9px; margin-bottom: 22px; flex: 1; }
+    .price-card li { font-size: 0.86rem; color: var(--text2); display: flex; gap: 8px; align-items: flex-start; }
+    .price-card li::before { content: '✓'; color: var(--green); font-weight: 800; }
+    .price-card .btn { width: 100%; }
+
+    /* FAQ */
+    .faq { max-width: 760px; margin: 36px auto 0; display: flex; flex-direction: column; gap: 10px; }
+    details { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
+    details summary { cursor: pointer; font-weight: 700; font-size: 0.92rem; list-style: none; }
+    details summary::-webkit-details-marker { display: none; }
+    details summary::after { content: '+'; float: right; color: var(--purple); font-weight: 800; }
+    details[open] summary::after { content: '−'; }
+    details p { color: var(--text2); font-size: 0.85rem; margin-top: 10px; }
+
+    /* FOOTER */
+    .footer { border-top: 1px solid var(--border); padding: 30px 0; text-align: center; color: var(--text3); font-size: 0.82rem; margin-top: 30px; }
+    .footer a { color: var(--cyan); }
+
+    @media (max-width: 640px) {
+      .nav-links a.hide-sm { display: none; }
+      .hero { padding: 46px 0 34px; }
+    }
+  </style>
+</head>
+
+<body>
+  <nav class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="index.html">
+        <img src="logo.svg" alt="ScanPOS" onerror="this.src='logo.png'" />
+        <span>ScanPOS</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features" class="hide-sm">Imkoniyatlar</a>
+        <a href="#pricing" class="hide-sm">Tariflar</a>
+        <a href="#faq" class="hide-sm">Savollar</a>
+        <a class="btn btn-primary" href="index.html">Boshlash</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="wrap">
+      <h1>Do'koningizni <em>smartfon</em> bilan boshqaring</h1>
+      <p>ScanPOS — shtrix-kod skaner, ombor, nasiya va analitika. Internet uzilsa ham ishlaydi. O'zbekiston kichik do'konlari uchun.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="index.html">Bepul boshlash</a>
+        <a class="btn btn-ghost" href="#pricing">Tariflarni ko'rish</a>
+      </div>
+      <div class="hero-note">Karta shart emas • 14 kunlik bepul sinov</div>
+      <div class="hero-stats">
+        <div class="stat"><b>Offline</b><span>internetsiz ishlaydi</span></div>
+        <div class="stat"><b>1 skan</b><span>savatcha tez qo'shish</span></div>
+        <div class="stat"><b>2 til</b><span>o'zbek / rus</span></div>
+        <div class="stat"><b>Asl Belgisi</b><span>raqamli markirovka</span></div>
+      </div>
+    </div>
+  </header>
+
+  <section class="section" id="features">
+    <div class="wrap">
+      <h2 class="section-title">Nega ScanPOS?</h2>
+      <p class="section-sub">Kassadan tortib hisobotgacha — hammasi bitta ilovada</p>
+      <div class="features">
+        <div class="feature"><div class="feature-icon">▣</div><h3>Shtrix-kod skaner</h3><p>Telefon kamerasi bilan tovar kodini o'qib, savatga avtomatik qo'shadi.</p></div>
+        <div class="feature"><div class="feature-icon">⛅</div><h3>Offline rejim</h3><p>Internet uzilsa ham sotuv davom etadi; ulanganda avtomatik sinxronlanadi.</p></div>
+        <div class="feature"><div class="feature-icon">▤</div><h3>Nasiya daftar</h3><p>Qarzdorlar, to'lovlar va qoldiq — hammasi tartibli va eslatmalar bilan.</p></div>
+        <div class="feature"><div class="feature-icon">▦</div><h3>Analitika</h3><p>Kunlik savdo, foyda, top mahsulotlar va xarajatlar bir ekranda.</p></div>
+        <div class="feature"><div class="feature-icon">☰</div><h3>Ombor va kirim</h3><p>Qoldiq, kirim, reviziya va muddati yaqin tovarlar nazorati.</p></div>
+        <div class="feature"><div class="feature-icon">⌂</div><h3>Bir necha filial</h3><p>Bir hisobda bir nechta do'kon (Biznes tarifida).</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="pricing">
+    <div class="wrap">
+      <h2 class="section-title">Oddiy va tushunarli tariflar</h2>
+      <p class="section-sub">Bepul boshlang, biznesingiz o'sganda tarifni oshiring</p>
+      <div class="pricing">
+        <div class="price-card">
+          <h3>Bepul</h3>
+          <div class="price-amount">0 <small>so'm</small></div>
+          <div class="price-desc">Kichik do'konlar uchun</div>
+          <ul>
+            <li>100 tagacha mahsulot</li>
+            <li>1 foydalanuvchi</li>
+            <li>Asosiy hisobot</li>
+            <li>Skaner va savat</li>
+          </ul>
+          <a class="btn btn-ghost" href="index.html">Boshlash</a>
+        </div>
+        <div class="price-card popular">
+          <span class="badge">Tavsiya</span>
+          <h3>Standart</h3>
+          <div class="price-amount">49 000 <small>so'm/oy</small></div>
+          <div class="price-desc">O'sayotgan do'konlar uchun</div>
+          <ul>
+            <li>Cheksiz mahsulot</li>
+            <li>To'liq analitika</li>
+            <li>Nasiya daftar</li>
+            <li>2 foydalanuvchi</li>
+            <li>Ustuvor qo'llab-quvvatlash</li>
+          </ul>
+          <a class="btn btn-primary" href="index.html">14 kun bepul</a>
+        </div>
+        <div class="price-card">
+          <h3>Biznes</h3>
+          <div class="price-amount">149 000 <small>so'm/oy</small></div>
+          <div class="price-desc">Bir nechta do'kon uchun</div>
+          <ul>
+            <li>Standart'dagi hammasi</li>
+            <li>Ko'p filial (tez orada)</li>
+            <li>Rollar va audit</li>
+            <li>Eksport (PDF/Excel)</li>
+            <li>Shaxsiy menejer</li>
+          </ul>
+          <a class="btn btn-ghost" href="index.html">14 kun bepul</a>
+        </div>
+      </div>
+      <p class="section-sub" style="margin-top:18px;font-size:0.8rem;color:var(--text3);">Yillik to'lovda 2 oy bepul.</p>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap">
+      <h2 class="section-title">Ko'p so'raladigan savollar</h2>
+      <div class="faq">
+        <details><summary>Boshlash uchun nima kerak?</summary><p>Faqat telefon yoki kompyuter va Google/email hisobi. Karta shart emas.</p></details>
+        <details><summary>Internetsiz ishlaydimi?</summary><p>Ha. Ma'lumotlar qurilmada saqlanadi va internet qaytganda avtomatik sinxronlanadi.</p></details>
+        <details><summary>To'lovni qanday amalga oshiraman?</summary><p>Payme yoki Click orqali o'tkazasiz, so'ng ilovada "To'lov qildim" tugmasini bosasiz — admin tasdiqlagach obuna faollashadi.</p></details>
+        <details><summary>Ma'lumotlarim xavfsizmi?</summary><p>Har bir do'kon ma'lumoti faqat o'z hisobiga bog'langan va serverda himoyalangan. Boshqalar ko'ra olmaydi.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="wrap">
+      <p>© <span id="yr"></span> ScanPOS — O'zbekiston uchun aqlli kassa tizimi</p>
+      <p style="margin-top:6px;">Aloqa: <a href="mailto:syodgorov47@gmail.com">syodgorov47@gmail.com</a></p>
+    </div>
+  </footer>
+
+  <script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
+</body>
+
+</html>

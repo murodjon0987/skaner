@@ -4086,6 +4086,10 @@ textarea {
 .auth-link { display: block; margin: 12px auto 0; background: none; border: none; color: var(--cyan); font-size: 0.8rem; cursor: pointer; }
 .auth-link:hover { text-decoration: underline; }
 
+.auth-pricing-link { margin-top: 14px; text-align: center; }
+.auth-pricing-link a { color: var(--text2); font-size: 0.8rem; }
+.auth-pricing-link a:hover { color: var(--cyan); text-decoration: underline; }
+
 .auth-error {
   margin-top: 14px;
   padding: 10px 12px;

@@ -1,8 +1,9 @@
 // ScanPOS Service Worker (Offline Cache)
-const CACHE_NAME = 'scanpos-v12';
+const CACHE_NAME = 'scanpos-v13';
 const LOCAL_ASSETS = [
   './',
   './index.html',
+  './pricing.html',
   './app.js',
   './auth.js',
   './firebase-config.js',
