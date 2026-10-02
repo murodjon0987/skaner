@@ -4090,6 +4090,10 @@ textarea {
 .auth-pricing-link a { color: var(--text2); font-size: 0.8rem; }
 .auth-pricing-link a:hover { color: var(--cyan); text-decoration: underline; }
 
+.auth-admin-link { margin-top: 8px; text-align: center; }
+.auth-admin-link button { background: none; border: none; color: var(--text3); font-size: 0.72rem; cursor: pointer; }
+.auth-admin-link button:hover { color: var(--purple); text-decoration: underline; }
+
 .auth-error {
   margin-top: 14px;
   padding: 10px 12px;

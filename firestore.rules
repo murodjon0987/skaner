@@ -18,9 +18,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Admin email (app.js dagi ADMIN_EMAIL bilan bir xil bo'lishi kerak)
+    // Admin emaillar (app.js dagi ADMIN_EMAILS bilan bir xil bo'lishi kerak)
+    function isAdminByEmail() {
+      return isSignedIn() && (
+        request.auth.token.email == 'syodgorov47@gmail.com' ||
+        request.auth.token.email == 'wenzonepeser@gmail.com'
+      );
+    }
+
+    // Admin: email YOKI `admins/{uid}` allowlist hujjati mavjud
     function isAdmin() {
-      return isSignedIn() && request.auth.token.email == 'syodgorov47@gmail.com';
+      return isAdminByEmail() ||
+        (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
     }
 
     function ownerOrAdmin(userId) {
@@ -28,9 +37,14 @@ service cloud.firestore {
     }
 
     // Admin allowlist hujjatlari
+    // - Admin email o'zi uchun yozo oladi
+    // - Yoki maxfiy kod bilan ("wenzone") o'zini admin qilib qo'sha oladi
     match /admins/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      allow create, update: if isAdmin() && request.auth.uid == uid;
+      allow create: if isSignedIn() && request.auth.uid == uid
+        && (isAdminByEmail() || request.resource.data.code == 'wenzone');
+      allow update: if isAdmin() && request.auth.uid == uid;
+      allow delete: if isAdmin();
     }
 
     // Obuna uchun to'lov so'rovlari (manual to'lov)

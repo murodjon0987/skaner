@@ -228,7 +228,8 @@ function withTimeout(promise, ms = 10000) {
 // ─────────────────────────────────────────────
 // SUBSCRIPTION / PLANS (Obuna va tariflar)
 // ─────────────────────────────────────────────
-const ADMIN_EMAIL = 'syodgorov47@gmail.com';
+const ADMIN_EMAILS = ['syodgorov47@gmail.com', 'wenzonepeser@gmail.com'];
+const ADMIN_CODE = 'wenzone';
 const TRIAL_DAYS = 14;
 
 const PLANS = {
@@ -261,11 +262,57 @@ const PAYMENT_INFO = {
 
 function planByKey(key) { return PLANS[key] || PLANS.free; }
 
-function isAdminUser(user) {
+function isAdminByEmail(user) {
  const u = user || (typeof window !== 'undefined' ? window.currentUser : null);
  if (!u) return false;
- return String(u.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase();
+ const email = String(u.email || '').toLowerCase();
+ return ADMIN_EMAILS.map(e => e.toLowerCase()).includes(email);
 }
+
+// Admin: admin email YOKI kod bilan ochilgan (device)
+function isAdminUser(user) {
+ if (typeof window !== 'undefined' && window.adminCodeUnlocked) return true;
+ return isAdminByEmail(user);
+}
+
+function loadAdminUnlock() {
+ try { window.adminCodeUnlocked = localStorage.getItem('scanpos_admin_unlocked') === '1'; }
+ catch (e) { window.adminCodeUnlocked = false; }
+}
+
+async function unlockAdminWithCode(code) {
+ if (String(code || '').trim() !== ADMIN_CODE) {
+  if (typeof showToast === 'function') showToast("Kod noto'g'ri", 'error');
+  return false;
+ }
+ window.adminCodeUnlocked = true;
+ try { localStorage.setItem('scanpos_admin_unlocked', '1'); } catch (e) {}
+ // Kirgan hisob uchun allowlist hujjatini yozamiz (rules kodni tasdiqlaydi)
+ if (window.currentUser && !isAdminByEmail(window.currentUser) && !window.useDemo && window.firebaseDB && window.firebaseFns && window.firebaseFns.setDoc) {
+  try {
+   await window.firebaseFns.setDoc(window.firebaseFns.doc(window.firebaseDB, 'admins', window.currentUser.uid), {
+    code: ADMIN_CODE,
+    email: window.currentUser.email || '',
+    updatedAt: new Date().toISOString()
+   }, { merge: true });
+  } catch (e) { console.warn('admin unlock yozish xato:', e); }
+ }
+ if (typeof renderUserMenu === 'function') renderUserMenu();
+ if (typeof showToast === 'function') showToast('Admin rejimi yoqildi', 'success');
+ return true;
+}
+
+window.handleAdminCode = async function () {
+ const code = prompt('Admin kodini kiriting:');
+ if (code === null) return;
+ const ok = await unlockAdminWithCode(code);
+ if (!ok) return;
+ if (window.currentUser) {
+  if (typeof openAdminPanel === 'function') openAdminPanel();
+ } else if (typeof showToast === 'function') {
+  showToast("Kod qabul qilindi. Endi hisobingiz bilan kiring.", 'success');
+ }
+};
 
 function _toDate(v) {
  if (!v) return null;
@@ -844,6 +891,7 @@ function detectCategoryFromName(name) {
 window.initApp = async function () {
  if (window._appInited) return;
  window._appInited = true;
+ loadAdminUnlock();
  loadSettings();
  loadLocalData();
  loadQuickItems();
@@ -950,8 +998,8 @@ async function ensureUserProfile(user) {
    await setDoc(ref, base, { merge: true });
    APP.subscriptionData = { ...snap.data(), ...base };
   }
-  // Admin bo'lsa, allowlist hujjatini ta'minlaymiz (rules uchun qo'shimcha)
-  if (isAdminUser(user) && window.firebaseFns.setDoc) {
+  // Admin email bo'lsa, allowlist hujjatini ta'minlaymiz (rules uchun qo'shimcha)
+  if (isAdminByEmail(user) && window.firebaseFns.setDoc) {
    try {
     await setDoc(doc(window.firebaseDB, 'admins', user.uid), { email: user.email, updatedAt: nowIso }, { merge: true });
    } catch (e) { /* rules ruxsat bermasa e'tiborsiz */ }
@@ -1030,6 +1078,15 @@ window.scanposOnLogin = async function (user) {
  window.useDemo = false;
  window._appInited = false;
  try { await ensureUserProfile(user); } catch (e) {}
+ // Kod bilan admin ochilgan bo'lsa — allowlist hujjatini yozamiz
+ loadAdminUnlock();
+ if (window.adminCodeUnlocked && !isAdminByEmail(user) && !window.useDemo && window.firebaseFns && window.firebaseFns.setDoc) {
+  try {
+   await window.firebaseFns.setDoc(window.firebaseFns.doc(window.firebaseDB, 'admins', user.uid), {
+    code: ADMIN_CODE, email: user.email || '', updatedAt: new Date().toISOString()
+   }, { merge: true });
+  } catch (e) { console.warn('admin unlock (login) xato:', e); }
+ }
  try { await loadUserMeta(); } catch (e) {}
  window.initApp();
  // Firestore'dagi og'ir kolleksiyalarni fonda yuklaymiz
@@ -1088,6 +1145,8 @@ function renderUserMenu() {
    if (emailEl) emailEl.textContent = email;
    const adminBtn = document.getElementById('adminMenuBtn');
    if (adminBtn) adminBtn.classList.toggle('hidden', !isAdminUser(user));
+   const adminBlock = document.getElementById('adminSettingsBlock');
+   if (adminBlock) adminBlock.classList.toggle('hidden', !isAdminUser(user));
   }
  }
  renderSettingsProfile();
@@ -7442,6 +7501,8 @@ window.renderSubscriptionUI = renderSubscriptionUI;
 window.getAccessState = getAccessState;
 window.canAddProduct = canAddProduct;
 window.isAdminUser = isAdminUser;
+window.isAdminByEmail = isAdminByEmail;
+window.unlockAdminWithCode = unlockAdminWithCode;
 window.PLANS = PLANS;
 window.openAdminPanel = openAdminPanel;
 window.adminSetTab = adminSetTab;

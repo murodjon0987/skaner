@@ -188,6 +188,7 @@
       <div id="authError" class="auth-error hidden"></div>
 
       <p class="auth-pricing-link"><a href="pricing.html" target="_blank" rel="noopener">Tariflar va narxlar &#8594;</a></p>
+      <p class="auth-admin-link"><button type="button" onclick="handleAdminCode()">Admin kirish</button></p>
 
       <div id="authDemoNotice" class="auth-demo-notice hidden">
         <p>Firebase hali sozlanmagan. <b>firebase-config.js</b> fayliga loyihangiz kalitlarini kiriting — shundan so'ng Google va email orqali kirish ishlaydi.</p>
@@ -766,6 +767,12 @@
           <button class="btn-primary btn-full"
             onclick="saveSettings(); showToast('Sozlamalar saqlandi')">Saqlash</button>
           
+          <div id="adminSettingsBlock" class="hidden">
+            <h3 class="settings-group-title">Boshqaruv</h3>
+            <div class="settings-group">
+              <button type="button" class="btn-secondary btn-full" onclick="openAdminPanel()">Admin panelni ochish</button>
+            </div>
+          </div>
           <h3 class="settings-group-title">Ilova</h3>
           <div class="settings-group" style="display:flex;flex-direction:column;gap:8px;">
             <button id="btnInstallApp" class="btn-primary btn-full hidden" onclick="installPWA()" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;">
