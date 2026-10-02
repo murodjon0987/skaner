@@ -254,7 +254,7 @@ const YEARLY_MONTHS_PAID = 10;
 const PAYMENT_INFO = {
  paymeLink: 'https://payme.uz/',
  clickLink: 'https://click.uz/',
- cardNumber: '8600 0000 0000 0000',
+ cardNumber: '4067 0700 0861 0359',
  cardHolder: 'S. Yodgorov',
  supportTelegram: 'https://t.me/'
 };
@@ -1279,6 +1279,76 @@ async function handleChangePassword() {
 // SUBSCRIPTION UI / PAYWALL
 // ─────────────────────────────────────────────
 let _selectedPlan = null;
+let _paymentReceiptData = '';
+
+function resetPaywallForm() {
+ _paymentReceiptData = '';
+ const nameEl = document.getElementById('payPayerName'); if (nameEl) nameEl.value = (window.currentUser && window.currentUser.displayName) || '';
+ const phoneEl = document.getElementById('payPayerPhone'); if (phoneEl) phoneEl.value = (APP.settings && APP.settings.shopPhone) || '';
+ const noteEl = document.getElementById('payNote'); if (noteEl) noteEl.value = '';
+ const inp = document.getElementById('paymentReceiptInput'); if (inp) inp.value = '';
+ const prev = document.getElementById('receiptPreviewWrap'); if (prev) prev.classList.add('hidden');
+ const ph = document.getElementById('receiptPlaceholder'); if (ph) ph.classList.remove('hidden');
+ const img = document.getElementById('receiptPreviewImg'); if (img) img.removeAttribute('src');
+ const det = document.getElementById('pendingDetails'); if (det) det.innerHTML = '';
+}
+
+function triggerPaymentReceipt() {
+ const input = document.getElementById('paymentReceiptInput');
+ if (input) input.click();
+}
+
+async function handlePaymentReceiptFile(event) {
+ const file = event && event.target && event.target.files && event.target.files[0];
+ if (!file) return;
+ try {
+  // Chek uchun biroz kattaroq o'lcham (matn o'qilishi uchun)
+  const dataUrl = await compressImage(file, 1000, 1000, 0.62);
+  _paymentReceiptData = dataUrl;
+  const img = document.getElementById('receiptPreviewImg');
+  const wrap = document.getElementById('receiptPreviewWrap');
+  const ph = document.getElementById('receiptPlaceholder');
+  if (img) img.src = dataUrl;
+  if (wrap) wrap.classList.remove('hidden');
+  if (ph) ph.classList.add('hidden');
+ } catch (e) {
+  console.warn('Chek o\'qish xato:', e);
+  showToast("Chek rasmini o'qib bo'lmadi", 'error');
+ } finally {
+  if (event && event.target) event.target.value = '';
+ }
+}
+
+function removePaymentReceipt() {
+ _paymentReceiptData = '';
+ const img = document.getElementById('receiptPreviewImg'); if (img) img.removeAttribute('src');
+ const wrap = document.getElementById('receiptPreviewWrap'); if (wrap) wrap.classList.add('hidden');
+ const ph = document.getElementById('receiptPlaceholder'); if (ph) ph.classList.remove('hidden');
+}
+
+function copyPaymentCard() {
+ const num = PAYMENT_INFO.cardNumber;
+ const done = () => showToast('Karta raqami nusxalandi', 'success');
+ if (navigator.clipboard && navigator.clipboard.writeText) {
+  navigator.clipboard.writeText(num).then(done).catch(() => showToast(num));
+ } else {
+  showToast(num);
+ }
+}
+
+function openReceiptLightbox(src) {
+ if (!src) return;
+ const el = document.getElementById('receiptLightbox');
+ const img = document.getElementById('receiptLightboxImg');
+ if (!el || !img) return;
+ img.src = src;
+ el.classList.remove('hidden');
+}
+
+function closeReceiptLightbox() {
+ const el = document.getElementById('receiptLightbox');
+ if (el) el.classList.add('hidden');
+}
 
 function renderSubscriptionUI() {
  const acc = getAccessState();
@@ -1330,6 +1400,7 @@ function renderPaywallPlans() {
 function openPaywall() {
  renderPaywallPlans();
  _selectedPlan = null;
+ resetPaywallForm();
  const payArea = document.getElementById('paywallPayArea');
  const pending = document.getElementById('paywallPending');
  if (payArea) payArea.classList.add('hidden');
@@ -1352,6 +1423,9 @@ function choosePlan(planKey) {
  const ch = document.getElementById('payCardHolder');
  if (cn) cn.textContent = PAYMENT_INFO.cardNumber;
  if (ch) ch.textContent = PAYMENT_INFO.cardHolder;
+ const amt = document.getElementById('payAmount');
+ if (amt) amt.textContent = formatPrice(plan.price) + " so'm";
+ resetPaywallForm();
  if (area) { area.classList.remove('hidden'); }
 }
 
@@ -1359,6 +1433,8 @@ async function submitPaymentRequest() {
  if (!_selectedPlan) { showToast('Avval tarif tanlang'); return; }
  const plan = planByKey(_selectedPlan);
  if (!window.currentUser) { showToast("Obuna uchun tizimga kiring", 'warning'); return; }
+ if (!_paymentReceiptData) { showToast("Iltimos, to'lov chekini yuklang", 'warning'); return; }
+
  const req = {
   uid: window.currentUser.uid,
   email: window.currentUser.email || '',
@@ -1368,6 +1444,10 @@ async function submitPaymentRequest() {
   planName: plan.name,
   amount: plan.price,
   method: 'manual',
+  payerName: (document.getElementById('payPayerName')?.value || '').trim(),
+  payerPhone: (document.getElementById('payPayerPhone')?.value || '').trim(),
+  note: (document.getElementById('payNote')?.value || '').trim(),
+  receiptData: _paymentReceiptData,
   status: 'pending',
   createdAt: new Date().toISOString()
  };
@@ -1379,7 +1459,15 @@ async function submitPaymentRequest() {
   const pending = document.getElementById('paywallPending');
   if (payArea) payArea.classList.add('hidden');
   if (pending) pending.classList.remove('hidden');
-  showToast("To'lov so'rovi yuborildi. Admin tasdiqlaydi.", 'success');
+  const det = document.getElementById('pendingDetails');
+  if (det) {
+   det.innerHTML = `
+    <div class="pending-row"><span>Tarif:</span><b>${escHtml(plan.name)}</b></div>
+    <div class="pending-row"><span>Summa:</span><b>${formatPrice(plan.price)} so'm</b></div>
+    <div class="pending-row"><span>Holat:</span><b class="status-pending">Ko'rib chiqilmoqda</b></div>
+    ${_paymentReceiptData ? `<img class="pending-receipt" src="${_paymentReceiptData}" alt="Chek" onclick="openReceiptLightbox('${_paymentReceiptData}')" />` : ''}`;
+  }
+  showToast("Chek qabul qilindi! Admin tasdiqlaydi.", 'success');
  } catch (e) {
   console.error('paymentRequest xato:', e);
   showToast("So'rov yuborilmadi. Internetni tekshiring.", 'error');
@@ -7135,6 +7223,12 @@ window.handleChangePassword = handleChangePassword;
 window.openPaywall = openPaywall;
 window.choosePlan = choosePlan;
 window.submitPaymentRequest = submitPaymentRequest;
+window.triggerPaymentReceipt = triggerPaymentReceipt;
+window.handlePaymentReceiptFile = handlePaymentReceiptFile;
+window.removePaymentReceipt = removePaymentReceipt;
+window.copyPaymentCard = copyPaymentCard;
+window.openReceiptLightbox = openReceiptLightbox;
+window.closeReceiptLightbox = closeReceiptLightbox;
 window.renderSubscriptionUI = renderSubscriptionUI;
 window.getAccessState = getAccessState;
 window.canAddProduct = canAddProduct;

@@ -1854,20 +1854,63 @@
         <div class="plan-cards" id="planCards"></div>
         <div id="paywallPayArea" class="paywall-pay-area hidden">
           <h4 class="profile-subtitle" id="paywallPayTitle">To'lov</h4>
+
+          <div class="paywall-amount-box">
+            <span>To'lov summasi</span>
+            <b id="payAmount">0 so'm</b>
+          </div>
+
+          <div class="paywall-card-info">
+            <div class="paywall-card-row">
+              <span>Karta raqami:</span>
+              <b id="payCardNumber">—</b>
+              <button type="button" class="copy-btn" onclick="copyPaymentCard()" title="Nusxalash">Nusxalash</button>
+            </div>
+            <div><span>Karta egasi:</span> <b id="payCardHolder">—</b></div>
+            <div class="settings-hint">Payme/Click ilovasida yuqoridagi kartaga o'tkazing. Izohga emailingizni yozing.</div>
+          </div>
+
           <div class="paywall-methods">
             <a id="paymeLink" class="pay-method payme" href="#" target="_blank" rel="noopener">Payme orqali</a>
             <a id="clickLink" class="pay-method click" href="#" target="_blank" rel="noopener">Click orqali</a>
           </div>
-          <div class="paywall-card-info">
-            <div><span>Karta raqami:</span> <b id="payCardNumber">—</b></div>
-            <div><span>Karta egasi:</span> <b id="payCardHolder">—</b></div>
-            <div class="settings-hint">To'lov izohida emailingizni yozing, so'ng "To'lov qildim" tugmasini bosing.</div>
+
+          <div class="form-group">
+            <label>To'lov qilgan shaxs ismi</label>
+            <input type="text" id="payPayerName" placeholder="Ism Familiya" />
           </div>
-          <button type="button" class="btn-primary btn-full" onclick="submitPaymentRequest()">To'lov qildim</button>
+          <div class="form-group">
+            <label>Telefon raqami</label>
+            <input type="tel" id="payPayerPhone" placeholder="+998 90 000 00 00" />
+          </div>
+          <div class="form-group">
+            <label>Izoh (ixtiyoriy)</label>
+            <input type="text" id="payNote" placeholder="Masalan: 1 oylik to'lov" />
+          </div>
+
+          <div class="form-group">
+            <label>To'lov cheki <span style="color:var(--danger)">*</span></label>
+            <div class="receipt-drop" id="receiptDrop" onclick="triggerPaymentReceipt()">
+              <input type="file" id="paymentReceiptInput" accept="image/*" style="display:none;" onchange="handlePaymentReceiptFile(event)" />
+              <div id="receiptPlaceholder" class="receipt-placeholder">
+                <span class="receipt-icon">▤</span>
+                <span>Chek rasmini yuklang (skrinshot)</span>
+                <small>PNG yoki JPG</small>
+              </div>
+              <div id="receiptPreviewWrap" class="receipt-preview-wrap hidden">
+                <img id="receiptPreviewImg" src="" alt="Chek" />
+                <button type="button" class="receipt-remove" onclick="event.stopPropagation(); removePaymentReceipt()">×</button>
+              </div>
+            </div>
+          </div>
+
+          <button type="button" class="btn-primary btn-full" onclick="submitPaymentRequest()">Chek yuborish</button>
         </div>
         <div id="paywallPending" class="paywall-pending hidden">
           <div class="paywall-pending-icon">✓</div>
-          <p>To'lov so'rovingiz yuborildi. Admin tasdiqlagach obuna avtomatik faollashadi.</p>
+          <h4>Qabul qilindi!</h4>
+          <p>To'lov chekingiz qabul qilindi. Admin tasdiqlagach obuna avtomatik faollashadi va sizga xabar keladi.</p>
+          <div id="pendingDetails" class="paywall-pending-details"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -1900,6 +1943,11 @@
         <button type="button" class="btn-secondary" onclick="closeModal('adminModal')">Yopish</button>
       </div>
     </div>
+  </div>
+
+  <!-- Receipt Lightbox -->
+  <div id="receiptLightbox" class="receipt-lightbox hidden" onclick="closeReceiptLightbox()">
+    <img id="receiptLightboxImg" src="" alt="Chek" onclick="event.stopPropagation()" />
   </div>
 
   <!-- Toast -->
