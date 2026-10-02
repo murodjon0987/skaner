@@ -4199,3 +4199,31 @@ textarea {
   opacity: 0.65;
   cursor: not-allowed;
 }
+
+/* ====== SETTINGS PROFILE CARD ====== */
+.settings-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.settings-profile-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg3);
+  border: 2px solid rgba(168, 85, 247, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.settings-profile-avatar span { font-size: 1.2rem; font-weight: 800; color: var(--text); }
+
+.settings-profile-info { flex: 1; min-width: 0; }
+.settings-profile-name { font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.settings-profile-email { font-size: 0.75rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

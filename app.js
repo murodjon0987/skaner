@@ -931,26 +931,55 @@ window.scanposOnLogout = function () {
 // ─────────────────────────────────────────────
 function renderUserMenu() {
  const wrap = document.getElementById('userMenuWrap');
- if (!wrap) return;
  const user = window.currentUser;
- if (!user) { wrap.classList.add('hidden'); return; }
- wrap.classList.remove('hidden');
+ if (wrap) {
+  if (!user) {
+   wrap.classList.add('hidden');
+  } else {
+   wrap.classList.remove('hidden');
 
- const name = user.displayName || (user.email ? user.email.split('@')[0] : 'Foydalanuvchi');
- const email = user.email || '';
- const photo = (APP.settings && APP.settings.profilePhoto) || user.photoURL || '';
- const initial = (name.charAt(0) || 'S').toUpperCase();
+   const name = user.displayName || (user.email ? user.email.split('@')[0] : 'Foydalanuvchi');
+   const email = user.email || '';
+   const photo = (APP.settings && APP.settings.profilePhoto) || user.photoURL || '';
+   const initial = (name.charAt(0) || 'S').toUpperCase();
 
- const img = document.getElementById('userAvatarImg');
- const initialEl = document.getElementById('userAvatarInitial');
- if (img) {
-  if (photo) { img.src = photo; img.classList.remove('hidden'); if (initialEl) initialEl.classList.add('hidden'); }
-  else { img.classList.add('hidden'); if (initialEl) { initialEl.textContent = initial; initialEl.classList.remove('hidden'); } }
+   const img = document.getElementById('userAvatarImg');
+   const initialEl = document.getElementById('userAvatarInitial');
+   if (img) {
+    if (photo) { img.src = photo; img.classList.remove('hidden'); if (initialEl) initialEl.classList.add('hidden'); }
+    else { img.classList.add('hidden'); if (initialEl) { initialEl.textContent = initial; initialEl.classList.remove('hidden'); } }
+   }
+   const mImg = document.getElementById('userMenuImg');
+   if (mImg) { if (photo) { mImg.src = photo; mImg.classList.remove('hidden'); } else { mImg.classList.add('hidden'); } }
+   const nameEl = document.getElementById('userMenuName');
+   const emailEl = document.getElementById('userMenuEmail');
+   if (nameEl) nameEl.textContent = name;
+   if (emailEl) emailEl.textContent = email;
+  }
  }
- const mImg = document.getElementById('userMenuImg');
- if (mImg) { if (photo) { mImg.src = photo; mImg.classList.remove('hidden'); } else { mImg.classList.add('hidden'); } }
- const nameEl = document.getElementById('userMenuName');
- const emailEl = document.getElementById('userMenuEmail');
+ renderSettingsProfile();
+}
+
+function renderSettingsProfile() {
+ const user = window.currentUser;
+ const shopName = (APP.settings && APP.settings.shopName) || '';
+ const fallbackName = shopName || 'Foydalanuvchi';
+ const name = user ? (user.displayName || (user.email ? user.email.split('@')[0] : fallbackName)) : fallbackName;
+ const email = user ? (user.email || '') : 'Demo rejim (hisobsiz)';
+ const photo = (APP.settings && APP.settings.profilePhoto) || (user && user.photoURL) || '';
+
+ const img = document.getElementById('settingsProfileImg');
+ const initial = document.getElementById('settingsProfileInitial');
+ if (img) {
+  if (photo) { img.src = photo; img.classList.remove('hidden'); }
+  else { img.classList.add('hidden'); img.removeAttribute('src'); }
+ }
+ if (initial) {
+  if (photo) { initial.classList.add('hidden'); }
+  else { initial.textContent = (name.charAt(0) || 'S').toUpperCase(); initial.classList.remove('hidden'); }
+ }
+ const nameEl = document.getElementById('settingsProfileName');
+ const emailEl = document.getElementById('settingsProfileEmail');
  if (nameEl) nameEl.textContent = name;
  if (emailEl) emailEl.textContent = email;
 }
@@ -6681,6 +6710,7 @@ window.applyLanguage = applyLanguage;
 
 // Auth / multi-tenant eksportlari
 window.renderUserMenu = renderUserMenu;
+window.renderSettingsProfile = renderSettingsProfile;
 window.toggleUserMenu = toggleUserMenu;
 window.openProfileSettings = openProfileSettings;
 window.openProfileModal = openProfileModal;
