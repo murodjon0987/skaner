@@ -225,6 +225,18 @@ function withTimeout(promise, ms = 10000) {
  ]);
 }
 
+// fetch + timeout (AbortSignal.timeout bo'lmagan brauzerlarda ham ishlaydi)
+function fetchWithTimeout(url, opts = {}, ms = 5000) {
+ let controller = null;
+ try {
+  if (typeof AbortController !== 'undefined') controller = new AbortController();
+ } catch (e) { controller = null; }
+ const id = setTimeout(() => { try { if (controller) controller.abort(); } catch (e) {} }, ms);
+ const o = Object.assign({}, opts);
+ if (controller) o.signal = controller.signal;
+ return fetch(url, o).finally(() => clearTimeout(id));
+}
+
 // ─────────────────────────────────────────────
 // SUBSCRIPTION / PLANS (Obuna va tariflar)
 // ─────────────────────────────────────────────
@@ -762,97 +774,119 @@ let zxingReader = null;
  * @param {string} barcode
  * @returns {Promise<{name, image, category, brand}|null>}
  */
+const OF_FIELDS = 'product_name,product_name_ru,product_name_en,generic_name,brands,image_front_url,image_url,image_front_small_url,image_small_url,categories_tags,selected_images';
+
+function pickProductName(p) {
+ if (!p) return '';
+ return String(
+  p.product_name_ru || p.product_name_uz || p.product_name ||
+  p.product_name_en || p.generic_name || p.brands || ''
+ ).trim();
+}
+
+function pickProductImage(p) {
+ if (!p) return null;
+ if (p.image_front_url) return p.image_front_url;
+ if (p.image_url) return p.image_url;
+ if (p.image_front_small_url) return p.image_front_small_url;
+ if (p.image_small_url) return p.image_small_url;
+ try {
+  const sel = p.selected_images && p.selected_images.front && p.selected_images.front.display;
+  if (sel) return sel.ru || sel.en || sel.fr || Object.values(sel)[0] || null;
+ } catch (e) {}
+ return null;
+}
+
+function _ofResult(p, fallbackCat) {
+ const name = pickProductName(p);
+ if (!name) return null;
+ return {
+  name,
+  brand: p.brands || '',
+  image: pickProductImage(p),
+  category: detectCategory(p.categories_tags || [], fallbackCat)
+ };
+}
+
 async function lookupBarcodeOnline(barcode) {
  const clean = String(barcode).trim();
  if (!clean) return null;
 
+ const ofUrl = (host) => `https://${host}/api/v2/product/${encodeURIComponent(clean)}.json?fields=${OF_FIELDS}`;
+
  // 1. OpenFoodFacts (oziq-ovqat va ichimliklar)
- const reqFood = fetch(
- `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(clean)}.json?fields=product_name,product_name_ru,product_name_en,brands,image_front_url,categories_tags`,
- { signal: AbortSignal.timeout(4500) }
- ).then(async res => {
- if (!res.ok) return null;
- const data = await res.json();
- if (data.status === 1 && data.product) {
- const p = data.product;
- const name = p.product_name_ru || p.product_name || p.product_name_en || p.brands || '';
- if (name) {
- return {
- name: name.trim(),
- brand: p.brands || '',
- image: p.image_front_url || null,
- category: detectCategory(p.categories_tags || [], 'oziq'),
- };
- }
- }
- return null;
- }).catch(() => null);
+ const reqFood = fetchWithTimeout(ofUrl('world.openfoodfacts.org'), {}, 6000)
+  .then(async res => (res.ok ? _ofResult((await res.json()).product, 'oziq') : null))
+  .catch(() => null);
 
  // 2. OpenBeautyFacts (gigiyena va kosmetika)
- const reqBeauty = fetch(
- `https://world.openbeautyfacts.org/api/v2/product/${encodeURIComponent(clean)}.json?fields=product_name,brands,image_front_url`,
- { signal: AbortSignal.timeout(4500) }
+ const reqBeauty = fetchWithTimeout(ofUrl('world.openbeautyfacts.org'), {}, 6000)
+  .then(async res => {
+   if (!res.ok) return null;
+   const data = await res.json();
+   if (data.status === 1 && data.product) {
+    const name = pickProductName(data.product);
+    if (name) return { name, brand: data.product.brands || '', image: pickProductImage(data.product), category: 'gigiyena' };
+   }
+   return null;
+  })
+  .catch(() => null);
+
+ // 3. Open Products Facts (boshqa mahsulotlar)
+ const reqProducts = fetchWithTimeout(ofUrl('world.openproductsfacts.org'), {}, 6000)
+  .then(async res => (res.ok ? _ofResult((await res.json()).product, 'boshqa') : null))
+  .catch(() => null);
+
+ // 4. UPC Item DB (global EAN/UPC katalogi)
+ const reqUpc = fetchWithTimeout(
+  `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(clean)}`,
+  { headers: { 'Accept': 'application/json' } }, 6000
  ).then(async res => {
- if (!res.ok) return null;
- const data = await res.json();
- if (data.status === 1 && data.product) {
- const p = data.product;
- const name = p.product_name || p.brands || '';
- if (name) {
- return {
- name: name.trim(),
- brand: p.brands || '',
- image: p.image_front_url || null,
- category: 'gigiyena',
- };
- }
- }
- return null;
+  if (!res.ok) return null;
+  const data = await res.json();
+  const item = data.items && data.items[0];
+  if (item && item.title) {
+   return {
+    name: item.title.trim(),
+    brand: item.brand || '',
+    image: (item.images && item.images[0]) || null,
+    category: detectCategoryFromName(item.title + ' ' + (item.category || ''))
+   };
+  }
+  return null;
  }).catch(() => null);
 
- // 3. UPC Item DB (global EAN/UPC katalogi)
- const reqUpc = fetch(
- `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(clean)}`,
- {
- signal: AbortSignal.timeout(4500),
- headers: { 'Accept': 'application/json' }
- }
- ).then(async res => {
- if (!res.ok) return null;
- const data = await res.json();
- const item = data.items?.[0];
- if (item && item.title) {
- return {
- name: item.title.trim(),
- brand: item.brand || '',
- image: item.images?.[0] || null,
- category: detectCategoryFromName(item.title + ' ' + (item.category || '')),
- };
- }
- return null;
- }).catch(() => null);
-
- // So'rovlarni ketma-ket emas, parallel (bir vaqtda) yuborish
- const results = await Promise.all([reqFood, reqBeauty, reqUpc]);
- return results.find(r => r && r.name) || null;
+ const results = await Promise.all([reqFood, reqBeauty, reqProducts, reqUpc]);
+ // Rasmli natijani afzal ko'ramiz
+ const withImage = results.find(r => r && r.name && r.image);
+ return withImage || results.find(r => r && r.name) || null;
 }
 
 /** categories_tags massividan kategoriya aniqlaymiz */
 function detectCategory(tags, fallback) {
- const str = tags.join(' ').toLowerCase();
- if (/(?:\b(?:water|suv)\b|вода|минералка)/.test(str)) {
- if (/0[.,]5|500/.test(str)) return 'suv_05';
- if (/1[.,]5|1[.,]0|1l/.test(str)) return 'suv_10';
- if (/5l|5000/.test(str)) return 'suv_50';
- return 'suv_05';
+ const str = ' ' + (Array.isArray(tags) ? tags.join(' ') : String(tags || '')).toLowerCase() + ' ';
+
+ // Suv
+ if (/(water|mineral-water|spring-water|suv|вода|минералк)/.test(str)) {
+  if (/(0[.,]5|500|half-liter|small-bottle)/.test(str)) return 'suv_05';
+  if (/(1[.,]5|1[.,]0|1l|1-l|1500)/.test(str)) return 'suv_10';
+  if (/(5l|5-l|5000|five-liter)/.test(str)) return 'suv_50';
+  return 'suv_05';
  }
- if (/(?:\b(?:beverage|drink|juice|cola|soda|tea|coffee)\b|напиток|сок|чай)/.test(str)) return 'ichimlik';
- if (/(?:\b(?:bread|bakery|flour|non)\b|хлеб|выпечка)/.test(str)) return 'non';
- if (/(?:\b(?:candy|chocolate|sweet|biscuit|snack|chip|crisp)\b|сладости|шоколад|конфеты)/.test(str)) return 'shirinlik';
- if (/(?:\b(?:milk|dairy|cheese|yogurt|sut)\b|молоко|сыр|йогурт)/.test(str)) return 'sut';
- if (/(?:\b(?:rice|pasta|grain|cereal|konserva|oziq)\b|крупа|макароны|консервы)/.test(str)) return 'oziq';
- if (/(?:\b(?:beauty|cosmetic|shampoo|soap|hygiene|gigiyena)\b|гигиена|косметика|мыло)/.test(str)) return 'gigiyena';
- if (/(?:\b(?:cleaning|detergent|household|uy)\b|бытовая химия)/.test(str)) return 'uy';
+ // Shirinliklar (chocolate/candy) — "chocolate" ichida "cola" borligi uchun ichimlikdan OLDIN
+ if (/(candy|chocolate|sweet|biscuit|snack|chip|crisp|wafer|cookie|cake|dessert|шоколад|конфет|печень|вафл|сладост|пирожн)/.test(str)) return 'shirinlik';
+ // Sut mahsulotlari
+ if (/(milk|dairy|cheese|yogurt|kefir|cream|butter|молоко|сыр|йогурт|кефир|сметан|qatiq|qaymoq)/.test(str)) return 'sut';
+ // Non va pishiriqlar
+ if (/(bread|bakery|flour|pastry|bun|bagel|хлеб|выпечк|батон|булочк|лепешк)/.test(str)) return 'non';
+ // Oziq-ovqat
+ if (/(rice|pasta|macaroni|noodle|grain|cereal|sugar|salt|oil|vinegar|sauce|ketchup|mayonnaise|canned|preserve|круп|макарон|рис|сахар|соль|масл|соус|консерв)/.test(str)) return 'oziq';
+ // Ichimliklar
+ if (/(beverage|drink|juice|nectar|cola|soda|lemonade|tea|coffee|energy|water-based|squash|сироп|напит|сок|чай|кофе)/.test(str)) return 'ichimlik';
+ // Gigiyena / kosmetika
+ if (/(beauty|cosmetic|shampoo|soap|hygiene|deodorant|toothpaste|perfume|cream|lotion|гигиен|косметик|мыло|шампунь)/.test(str)) return 'gigiyena';
+ // Uy-ro'zg'or
+ if (/(cleaning|detergent|household|dishwash|bleach|laundry|бытов|порошок|чистящ)/.test(str)) return 'uy';
  return fallback || 'boshqa';
 }
 
@@ -3855,9 +3889,9 @@ async function fetchProductImageOnline() {
  // 2. Nom orqali OpenFoodFacts search
  if (name) {
  try {
- const queryRes = await fetch(
+ const queryRes = await fetchWithTimeout(
  `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(name)}&search_simple=1&action=process&json=1&page_size=1`,
- { signal: AbortSignal.timeout(5000) }
+ {}, 6000
  );
  if (queryRes.ok) {
  const qData = await queryRes.json();
