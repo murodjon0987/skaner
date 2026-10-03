@@ -55,12 +55,24 @@ Aks holda Google bilan kirishda `auth/unauthorized-domain` xatosi chiqadi.
 
 ---
 
-## 5. Sozlash (app.js)
+## 5. Sozlash
 
-`app.js` boshidagi konfiguratsiyalar:
-- `ADMIN_EMAIL` — admin panel shu emailga bog'langan.
+### `firebase-config.js`
+- `window.firebaseConfig` — Firebase kalitlari.
+- `window.SCANPOS_PAYMENT` — to'lov ma'lumotlari (shaxsiy ma'lumotlar **app.js** da emas, shu faylda):
+  - `paymeLink` / `clickLink` — haqiqiy merchant to'lov havolalari. Bo'sh qoldirilsa, ilova avtomatik faqat
+    karta orqali o'tkazma + chek yuborish oqimini ko'rsatadi. Payme: `https://payme.uz/{merchant_id}`,
+    Click: `https://my.click.uz/services/pay?service_id=...&merchant_id=...`.
+  - `cardNumber` / `cardHolder` — pul o'tkaziladigan karta.
+  - `supportTelegram` — foydalanuvchi uchun Telegram yordam havolasi (Paywall, Sozlamalar, pricing.html).
+
+### `app.js` (faqat umumiy sozlamalar)
+- `ADMIN_EMAILS` — admin panel shu emaillarga bog'langan. **Kodli admin backdoor olib tashlangan.**
 - `PLANS` — tariflar (Bepul / Standart / Biznes).
-- `PAYMENT_INFO` — qabul qiluvchi karta, Payme/Click havolalari.
+
+### Firestore Rules
+- `admins/{uid}` allowlist'ni faqat mavjud admin boshqaradi (kod orqali o'zini admin qilish mumkin emas).
+- Rules'ni `npm run deploy:rules` bilan qayta deploy qiling.
 
 ---
 

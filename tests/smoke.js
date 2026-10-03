@@ -922,6 +922,46 @@ async function runTests() {
   assert(printLabelOpened, 'Mahsulot yorlig\'i oynasi muvaffaqiyatli ochildi');
 
   // ─────────────────────────────────────────────
+  // TEST 28: Kasr (kg/gramm) qaytarish - submitRefund va ombor tiklanishi
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 28: Kasr (kg) qaytarish (vozvrat)');
+  window.useDemo = true;
+  window.navigator.onLine = true;
+  const refundMeat = {
+    id: 'prod-refund-meat',
+    barcode: '7777777777777',
+    name: "Mol go'shti",
+    price: 80000,
+    costPrice: 65000,
+    stock: 10,
+    unit: 'kg',
+    trackStock: true,
+    category: 'oziq'
+  };
+  window.APP.products.push(refundMeat);
+  const meatBill = {
+    id: 'bill-refund-meat',
+    timestamp: new Date().toISOString(),
+    total: 160000,
+    items: [{ id: refundMeat.id, name: refundMeat.name, price: 80000, qty: 2, unit: 'kg' }],
+    paymentMethod: 'cash',
+    refunds: []
+  };
+  window.APP.bills.unshift(meatBill);
+  window.APP._currentRefundBill = meatBill;
+
+  const meatRefundInput = document.createElement('input');
+  meatRefundInput.id = `refund-qty-${refundMeat.id}`;
+  meatRefundInput.value = '0.5';
+  document.body.appendChild(meatRefundInput);
+
+  await window.submitRefund();
+  assert(meatBill.refunds && meatBill.refunds.length === 1, 'Kasr qaytarish yozuvi saqlandi');
+  assert(meatBill.refunds[0].qty === 0.5, '0.5 kg to\'g\'ri qabul qilindi (parseInt emas)');
+  assert(meatBill.refunds[0].amount === 40000, '0.5 kg × 80 000 = 40 000 so\'m to\'g\'ri hisoblandi');
+  assert(refundMeat.stock === 10.5, 'Ombordagi qoldiq 10 dan 0.5 ga ko\'payib 10.5 kg bo\'ldi');
+
+  // ─────────────────────────────────────────────
   // XULOSA
   // ─────────────────────────────────────────────
   console.log(`\n══════════════════════════════════════`);

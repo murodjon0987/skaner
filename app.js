@@ -241,7 +241,6 @@ function fetchWithTimeout(url, opts = {}, ms = 5000) {
 // SUBSCRIPTION / PLANS (Obuna va tariflar)
 // ─────────────────────────────────────────────
 const ADMIN_EMAILS = ['syodgorov47@gmail.com', 'wenzonepeser@gmail.com'];
-const ADMIN_CODE = 'wenzone';
 const TRIAL_DAYS = 14;
 
 const PLANS = {
@@ -263,14 +262,16 @@ const PLANS = {
 };
 const YEARLY_MONTHS_PAID = 10;
 
-// DIQQAT: TO'LOV MA'LUMOTLARI — bularni o'zingiznikiga almashtiring!
-const PAYMENT_INFO = {
- paymeLink: 'https://payme.uz/',
- clickLink: 'https://click.uz/',
- cardNumber: '4067 0700 0861 0359',
- cardHolder: 'SH. Murodjon',
- supportTelegram: 'https://t.me/'
-};
+// TO'LOV MA'LUMOTLARI — shaxsiy ma'lumotlar app.js ichida emas, balki
+// firebase-config.js dagi `window.SCANPOS_PAYMENT` orqali sozlanadi.
+// Bu yerda faqat zaxira (fallback) qiymatlar qoladi.
+const PAYMENT_INFO = Object.assign({
+	paymeLink: '',
+	clickLink: '',
+	cardNumber: '',
+	cardHolder: '',
+	supportTelegram: ''
+}, (typeof window !== 'undefined' && window.SCANPOS_PAYMENT) || {});
 
 function planByKey(key) { return PLANS[key] || PLANS.free; }
 
@@ -281,58 +282,13 @@ function isAdminByEmail(user) {
  return ADMIN_EMAILS.map(e => e.toLowerCase()).includes(email);
 }
 
-// Admin: admin email YOKI kod bilan ochilgan (device)
+// Admin faqat ADMIN_EMAILS ro'yxatidagi email orqali aniqlanadi.
+// Xavfsizlik: avvalgi kodli ("wenzone") backdoor butunlay olib tashlandi —
+// aks holda istalgan foydalanuvchi o'zini admin qilib, boshqa do'konlar
+// ma'lumotlariga to'liq kirish huquqini qo'lga kiritishi mumkin edi.
 function isAdminUser(user) {
- if (typeof window !== 'undefined' && window.adminCodeUnlocked) return true;
- return isAdminByEmail(user);
+	return isAdminByEmail(user);
 }
-
-function loadAdminUnlock() {
- try { window.adminCodeUnlocked = localStorage.getItem('scanpos_admin_unlocked') === '1'; }
- catch (e) { window.adminCodeUnlocked = false; }
-}
-
-async function unlockAdminWithCode(code) {
- if (String(code || '').trim() !== ADMIN_CODE) {
-  if (typeof showToast === 'function') showToast("Kod noto'g'ri", 'error');
-  return false;
- }
- window.adminCodeUnlocked = true;
- try { localStorage.setItem('scanpos_admin_unlocked', '1'); } catch (e) {}
- // Kirgan hisob uchun allowlist hujjatini yozamiz (rules kodni tasdiqlaydi)
- if (window.currentUser && !isAdminByEmail(window.currentUser) && !window.useDemo && window.firebaseDB && window.firebaseFns && window.firebaseFns.setDoc) {
-  try {
-   await window.firebaseFns.setDoc(window.firebaseFns.doc(window.firebaseDB, 'admins', window.currentUser.uid), {
-    code: ADMIN_CODE,
-    email: window.currentUser.email || '',
-    updatedAt: new Date().toISOString()
-   }, { merge: true });
-  } catch (e) { console.warn('admin unlock yozish xato:', e); }
- }
- if (typeof renderUserMenu === 'function') renderUserMenu();
- if (typeof showToast === 'function') showToast('Admin rejimi yoqildi', 'success');
- return true;
-}
-
-window.handleAdminCode = async function () {
- const code = prompt('Admin kodini kiriting:');
- if (code === null) return;
- const ok = await unlockAdminWithCode(code);
- if (!ok) return;
- if (window.currentUser) {
-  if (typeof openAdminPanel === 'function') openAdminPanel();
- } else {
-  const el = document.getElementById('authError');
-  if (el) {
-   el.textContent = "Kod qabul qilindi. Endi Google yoki email bilan kiring — admin panel avtomatik ochiladi.";
-   el.classList.remove('hidden');
-   el.style.background = 'rgba(34,197,94,0.12)';
-   el.style.borderColor = 'rgba(34,197,94,0.35)';
-   el.style.color = '#86efac';
-  }
-  if (typeof showToast === 'function') showToast('Kod qabul qilindi. Endi kiring.', 'success');
- }
-};
 
 function _toDate(v) {
  if (!v) return null;
@@ -946,13 +902,14 @@ function detectCategoryFromName(name) {
 // INIT
 // ─────────────────────────────────────────────
 window.initApp = async function () {
- if (window._appInited) return;
- window._appInited = true;
- loadAdminUnlock();
- loadSettings();
- loadLocalData();
- loadQuickItems();
- updateFirebaseStatus();
+  if (window._appInited) return;
+	window._appInited = true;
+	loadSettings();
+	loadLocalData();
+	loadQuickItems();
+	updateFirebaseStatus();
+	renderSupportLinks();
+	updateThermalUI();
 
  if (window.useDemo) {
  const demoTag = document.getElementById('demoTag');
@@ -1134,17 +1091,8 @@ window.scanposOnLogin = async function (user) {
  window.storageNs = 'u_' + user.uid;
  window.useDemo = false;
  window._appInited = false;
- try { await ensureUserProfile(user); } catch (e) {}
- // Kod bilan admin ochilgan bo'lsa — allowlist hujjatini yozamiz
- loadAdminUnlock();
- if (window.adminCodeUnlocked && !isAdminByEmail(user) && !window.useDemo && window.firebaseFns && window.firebaseFns.setDoc) {
-  try {
-   await window.firebaseFns.setDoc(window.firebaseFns.doc(window.firebaseDB, 'admins', user.uid), {
-    code: ADMIN_CODE, email: user.email || '', updatedAt: new Date().toISOString()
-   }, { merge: true });
-  } catch (e) { console.warn('admin unlock (login) xato:', e); }
- }
- try { await loadUserMeta(); } catch (e) {}
+  try { await ensureUserProfile(user); } catch (e) {}
+  try { await loadUserMeta(); } catch (e) {}
  window.initApp();
  // Firestore'dagi og'ir kolleksiyalarni fonda yuklaymiz
  loadUserCollections();
@@ -1461,8 +1409,23 @@ function copyPaymentCard() {
  }
 }
 
+// Telegram "Yordam / Qo'llab-quvvatlash" havolalarini barcha joyga o'rnatadi.
+function renderSupportLinks() {
+	const url = (PAYMENT_INFO.supportTelegram || '').trim();
+	document.querySelectorAll('[data-support-telegram]').forEach(el => {
+		if (url) {
+			el.href = url;
+			el.classList.remove('hidden');
+			el.style.display = 'inline-flex';
+		} else {
+			el.classList.add('hidden');
+			el.style.display = 'none';
+		}
+	});
+}
+
 function openReceiptLightbox(src) {
- if (!src) return;
+	if (!src) return;
  const el = document.getElementById('receiptLightbox');
  const img = document.getElementById('receiptLightboxImg');
  if (!el || !img) return;
@@ -1572,14 +1535,24 @@ function proceedToPayment() {
  if (confirm) confirm.classList.add('hidden');
  const title = document.getElementById('paywallPayTitle');
  if (title) title.textContent = `${plan.name} — ${plan.priceLabel}`;
- const pl = document.getElementById('paymeLink');
- const cl = document.getElementById('clickLink');
- if (pl) pl.href = PAYMENT_INFO.paymeLink;
- if (cl) cl.href = PAYMENT_INFO.clickLink;
- const cn = document.getElementById('payCardNumber');
- const ch = document.getElementById('payCardHolder');
- if (cn) cn.textContent = PAYMENT_INFO.cardNumber;
- if (ch) ch.textContent = PAYMENT_INFO.cardHolder;
+	// Payme / Click faqat haqiqiy merchant havolasi sozlangan bo'lsa ko'rsatiladi.
+	// (Bo'sh bo'lsa foydalanuvchi karta orqali o'tkazib, chek yuboradi.)
+	const payme = (PAYMENT_INFO.paymeLink || '').trim();
+	const click = (PAYMENT_INFO.clickLink || '').trim();
+	const pl = document.getElementById('paymeLink');
+	const cl = document.getElementById('clickLink');
+	const methodsWrap = document.getElementById('paywallMethods');
+	if (pl) { pl.href = payme || '#'; pl.classList.toggle('hidden', !payme); }
+	if (cl) { cl.href = click || '#'; cl.classList.toggle('hidden', !click); }
+	if (methodsWrap) methodsWrap.classList.toggle('hidden', !payme && !click);
+	const cardInfo = document.getElementById('paywallCardInfo');
+	const cn = document.getElementById('payCardNumber');
+	const ch = document.getElementById('payCardHolder');
+	const hasCard = Boolean((PAYMENT_INFO.cardNumber || '').trim());
+	if (cardInfo) cardInfo.classList.toggle('hidden', !hasCard);
+	if (cn) cn.textContent = PAYMENT_INFO.cardNumber || '—';
+	if (ch) ch.textContent = PAYMENT_INFO.cardHolder || '—';
+	renderSupportLinks();
  const amt = document.getElementById('paywallAmount');
  if (amt) amt.textContent = formatPrice(plan.price);
  resetPaywallForm();
@@ -2801,7 +2774,7 @@ function populateCheckoutDebtors() {
 
 function onCheckoutDebtorChange() {
  const select = document.getElementById('checkoutDebtorSelect');
- const newFields = document.getElementById('newDebtorQuickFields');
+ const newFields = document.getElementById('newDebtorInputGroup');
  if (select && select.value === 'new') {
  if (newFields) newFields.style.display = 'block';
  } else {
@@ -4262,7 +4235,7 @@ function renderProducts() {
  if (APP._filterExpiringStock) {
   list = getExpiringProducts(7);
  } else if (_filterLowStock) {
-  list = list.filter(p => p.trackStock !== false && (parseInt(p.stock, 10) || 0) <= limit);
+		list = list.filter(p => p.trackStock !== false && (parseFloat(p.stock) || 0) <= limit);
  }
  renderProductGrid(list);
  updateProductStats();
@@ -4283,8 +4256,8 @@ function renderProductGrid(products) {
 
  grid.innerHTML = products.map(p => {
  const isUntracked = p.trackStock === false;
- const currentStock = parseInt(p.stock, 10) || 0;
- const isLow = !isUntracked && currentStock <= limit;
+	const currentStock = parseFloat(p.stock) || 0;
+	const isLow = !isUntracked && currentStock <= limit;
  const expInfo = getExpiryStatus(p.expiryDate);
  let expBadgeHtml = '';
  if (expInfo.status === 'expired') {
@@ -4340,7 +4313,7 @@ function updateProductStats() {
  if (valEl) valEl.textContent = formatPriceShort(totalVal);
 
  const limit = parseInt(APP.settings.lowStockLimit || 5, 10);
- const lowStockCount = (APP.products || []).filter(p => p.trackStock !== false && (parseInt(p.stock, 10) || 0) <= limit).length;
+	const lowStockCount = (APP.products || []).filter(p => p.trackStock !== false && (parseFloat(p.stock) || 0) <= limit).length;
  const lowCountEl = document.getElementById('lowStockCount');
  if (lowCountEl) lowCountEl.textContent = lowStockCount;
  const lowCardEl = document.getElementById('lowStockCard');
@@ -4386,7 +4359,7 @@ function listenFirestoreProducts() {
        if (pUp.stock !== undefined) {
         existing.stock = pUp.stock;
        } else if (pUp.qtyChange !== undefined) {
-        existing.stock = (parseInt(existing.stock, 10) || 0) + pUp.qtyChange;
+	existing.stock = (parseFloat(existing.stock) || 0) + pUp.qtyChange;
        }
        prodMap.set(pUp.id, existing);
       }
@@ -4405,11 +4378,29 @@ function listenFirestoreProducts() {
  }
 }
 
+// Firestore bepul (Spark) kvotasini tejash uchun cheklarni bo'lib-bo'lib yuklaymiz.
+// Avvalgi holatda butun tarix (minglab chek) har safar to'liq o'qilardi.
+const BILLS_PAGE_SIZE = 300;
+
+function _billsQueryRef() {
+	const base = userCol('bills');
+	try {
+		const { query, orderBy, limit } = window.firebaseFns;
+		if (typeof query === 'function' && typeof orderBy === 'function' && typeof limit === 'function') {
+			return query(base, orderBy('timestamp', 'desc'), limit(APP.billsLimit || BILLS_PAGE_SIZE));
+		}
+	} catch (e) { /* query API mavjud bo'lmasa to'liq kolleksiya */ }
+	return base;
+}
+
 function listenFirestoreBills() {
- if (!window.firebaseDB || !window.firebaseFns || !window.firebaseFns.onSnapshot) return;
- const { onSnapshot } = window.firebaseFns;
- const colRef = userCol('bills');
- const handler = async (snap) => {
+	if (!window.firebaseDB || !window.firebaseFns || !window.firebaseFns.onSnapshot) return;
+	const { onSnapshot } = window.firebaseFns;
+	if (!APP.billsLimit) APP.billsLimit = BILLS_PAGE_SIZE;
+	// Avvalgi obunani yopamiz (pagination qayta obuna bo'ladi)
+	try { if (typeof APP._billsUnsub === 'function') APP._billsUnsub(); } catch (e) {}
+	const colRef = _billsQueryRef();
+	const handler = async (snap) => {
   let bills = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   if (snap.metadata && snap.metadata.hasPendingWrites) {
    const outbox = await getOutboxQueue();
@@ -4428,10 +4419,25 @@ function listenFirestoreBills() {
   renderBills();
  };
  try {
-  return onSnapshot(colRef, { includeMetadataChanges: true }, handler);
+  APP._billsUnsub = onSnapshot(colRef, { includeMetadataChanges: true }, handler);
  } catch (e) {
-  return onSnapshot(colRef, handler);
+  APP._billsUnsub = onSnapshot(colRef, handler);
  }
+ return APP._billsUnsub;
+}
+
+// "Ko'proq chek yuklash" — sahifa hajmini oshiradi (Firestore kvotasini tejaydi)
+function loadMoreBills() {
+	if (window.useDemo || !window.firebaseDB || !window.firebaseFns || !window.firebaseFns.onSnapshot) {
+		showToast('Bu rejimda qo\'shimcha yuklash mavjud emas', 'info');
+		return;
+	}
+	APP.billsLimit = (APP.billsLimit || BILLS_PAGE_SIZE) + BILLS_PAGE_SIZE;
+	listenFirestoreBills();
+	if (typeof APP._billsUnsub === 'function') {
+		APP._unsubs = (APP._unsubs || []).concat(APP._billsUnsub);
+	}
+	showToast(`Ko'proq chek yuklanmoqda (${APP.billsLimit} tagacha)...`, 'info');
 }
 
 function listenFirestoreDebtors() {
@@ -4651,7 +4657,228 @@ function showBillDetail(billId) {
 }
 
 function printBill() {
- window.print();
+	window.print();
+}
+
+// ─────────────────────────────────────────────
+// BLUETOOTH ESC/POS TERMAL PRINTER (58mm / 80mm)
+// ─────────────────────────────────────────────
+// Web Bluetooth orqali mini termal printerga to'g'ridan-to'g'ri chek chiqaradi.
+function _escposSafe(str) {
+	return String(str == null ? '' : str)
+		.replace(/[`ʻʼ‘’]/g, "'")
+		.replace(/[“”]/g, '"')
+		.replace(/[\u00A0\u2007\u202F]/g, ' ');
+}
+
+function _escposPad(left, right, width) {
+	left = _escposSafe(left);
+	right = _escposSafe(right);
+	if (left.length + right.length + 1 > width) {
+		return left + '\n' + _escposPad('', right, width);
+	}
+	const pad = Math.max(1, width - left.length - right.length);
+	return left + ' '.repeat(pad) + right;
+}
+
+function _escposConcat(chunks) {
+	const total = chunks.reduce((s, c) => s + c.length, 0);
+	const out = new Uint8Array(total);
+	let off = 0;
+	for (const c of chunks) { out.set(c, off); off += c.length; }
+	return out;
+}
+
+function _escposDate(iso) {
+	const d = new Date(iso || Date.now());
+	if (isNaN(d.getTime())) return '';
+	const p = (n) => String(n).padStart(2, '0');
+	return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+const ThermalPrinter = {
+	device: null,
+	characteristic: null,
+	SERVICE_UUIDS: [
+		'000018f0-0000-1000-8000-00805f9b34fb',
+		'0000ff00-0000-1000-8000-00805f9b34fb',
+		'49535343-fe7d-4ae5-8fa9-9fafd205e455',
+		'e7810a71-73ae-499d-8c15-faa9aef0c3f2'
+	],
+	supported() {
+		return typeof navigator !== 'undefined' && !!navigator.bluetooth && typeof navigator.bluetooth.requestDevice === 'function';
+	},
+	isConnected() {
+		try { return Boolean(this.device && this.device.gatt && this.device.gatt.connected && this.characteristic); }
+		catch (e) { return false; }
+	},
+	async connect() {
+		if (!this.supported()) throw new Error('bluetooth-unsupported');
+		const device = await navigator.bluetooth.requestDevice({
+			acceptAllDevices: true,
+			optionalServices: this.SERVICE_UUIDS
+		});
+		const server = await device.gatt.connect();
+		let characteristic = null;
+		for (const su of this.SERVICE_UUIDS) {
+			try {
+				const service = await server.getPrimaryService(su);
+				const chars = await service.getCharacteristics();
+				for (const ch of chars) {
+					if (ch.properties && (ch.properties.write || ch.properties.writeWithoutResponse)) {
+						characteristic = ch;
+						break;
+					}
+				}
+				if (characteristic) break;
+			} catch (e) { /* ushbu servis mavjud emas */ }
+		}
+		if (!characteristic) {
+			try { device.gatt.disconnect(); } catch (e) {}
+			throw new Error('printer-characteristic-not-found');
+		}
+		try {
+			device.addEventListener('gattserverdisconnected', () => {
+				this.characteristic = null;
+				this.device = null;
+				showToast('Termal printer uzildi', 'info');
+			});
+		} catch (e) {}
+		this.device = device;
+		this.characteristic = characteristic;
+		return device;
+	},
+	disconnect() {
+		try { if (this.device && this.device.gatt && this.device.gatt.connected) this.device.gatt.disconnect(); } catch (e) {}
+		this.device = null;
+		this.characteristic = null;
+	},
+	async write(bytes) {
+		if (!this.characteristic) throw new Error('not-connected');
+		const CHUNK = 180;
+		for (let i = 0; i < bytes.length; i += CHUNK) {
+			const slice = bytes.slice(i, i + CHUNK);
+			if (this.characteristic.writeValueWithoutResponse && this.characteristic.properties && this.characteristic.properties.writeWithoutResponse) {
+				await this.characteristic.writeValueWithoutResponse(slice);
+			} else {
+				await this.characteristic.writeValue(slice);
+			}
+			// Kichik pauza: arzon BLE printerlar ketma-ket paketlarni tashlab qo'ymasligi uchun
+			await new Promise(r => setTimeout(r, 15));
+		}
+	},
+	buildReceipt(bill) {
+		const W = 32;
+		const chunks = [];
+		const raw = (arr) => chunks.push(new Uint8Array(arr));
+		const txt = (s) => chunks.push(new TextEncoder().encode(_escposSafe(s)));
+		const ln = (s) => txt((s || '') + '\n');
+		const pad = (l, r) => ln(_escposPad(l, r, W));
+		const num = (n) => new Intl.NumberFormat('uz-UZ').format(Math.round(Number(n) || 0));
+		const settings = APP.settings || {};
+
+		raw([0x1B, 0x40]);
+		raw([0x1B, 0x61, 0x01]);
+		raw([0x1D, 0x21, 0x11]);
+		ln('ScanPOS');
+		raw([0x1D, 0x21, 0x00]);
+		const shop = bill.shopName || settings.shopName || '';
+		if (shop) ln(shop);
+		if (settings.shopAddress) ln(settings.shopAddress);
+		if (settings.shopPhone) ln('Tel: ' + settings.shopPhone);
+		raw([0x1B, 0x61, 0x00]);
+		ln('-'.repeat(W));
+		pad('Chek:', '#' + String(bill.id || '').slice(-8).toUpperCase());
+		pad('Sana:', _escposDate(bill.timestamp));
+		const methodLabel = { cash: 'Naqd', card: 'Karta', transfer: "O'tkazma", debt: 'Nasiya' };
+		pad("To'lov:", methodLabel[bill.paymentMethod] || bill.paymentMethod || '-');
+		ln('-'.repeat(W));
+		(bill.items || []).forEach(it => {
+			const unit = it.unit || 'ta';
+			ln(it.name);
+			pad('  ' + it.qty + ' ' + unit + ' x ' + num(it.price), num(it.price * it.qty));
+		});
+		ln('-'.repeat(W));
+		if (bill.subtotal != null) pad('Oraliq:', num(bill.subtotal));
+		if (bill.discount > 0) pad('Chegirma:', '-' + num(bill.discount));
+		if (bill.tax > 0) pad('QQS:', '+' + num(bill.tax));
+		raw([0x1B, 0x45, 0x01]);
+		pad('JAMI:', num(bill.total) + " so'm");
+		raw([0x1B, 0x45, 0x00]);
+		if (bill.cashGiven > 0) {
+			pad('Berildi:', num(bill.cashGiven));
+			pad('Qaytim:', num(bill.cashGiven - bill.total));
+		}
+		ln('-'.repeat(W));
+		raw([0x1B, 0x61, 0x01]);
+		ln('Xaridingiz uchun rahmat!');
+		ln('ScanPOS');
+		ln('');
+		ln('');
+		raw([0x1D, 0x56, 0x42, 0x00]);
+		return _escposConcat(chunks);
+	}
+};
+
+async function connectThermalPrinter() {
+	if (!ThermalPrinter.supported()) {
+		showToast("Bu qurilma/brauzer Bluetooth printerni qo'llamaydi (Chrome/Edge kerak)", 'warning');
+		return false;
+	}
+	try {
+		showToast('Printerni tanlang...');
+		await ThermalPrinter.connect();
+		showToast('Termal printer ulandi', 'success');
+		if (typeof updateThermalUI === 'function') updateThermalUI();
+		return true;
+	} catch (e) {
+		if (e && (e.name === 'NotFoundError' || /cancel/i.test(String(e.message || '')))) {
+			showToast('Printer tanlanmadi', 'info');
+		} else {
+			console.warn('Termal printer ulanish xato:', e);
+			showToast('Printerga ulanib bo\'lmadi', 'error');
+		}
+		return false;
+	}
+}
+
+function disconnectThermalPrinter() {
+	ThermalPrinter.disconnect();
+	showToast('Termal printer uzildi', 'info');
+	if (typeof updateThermalUI === 'function') updateThermalUI();
+}
+
+function updateThermalUI() {
+	const btn = document.getElementById('thermalPrintBtn');
+	const status = document.getElementById('thermalPrinterStatus');
+	const connected = ThermalPrinter.isConnected();
+	if (btn) {
+		btn.disabled = false;
+		btn.title = connected ? 'Termal printerga chop etish' : 'Termal printer bilan chop etish';
+	}
+	if (status) status.textContent = connected ? 'Ulangan' : 'Ulanmagan';
+}
+
+async function thermalPrintBill(billId) {
+	const bill = billId ? APP.bills.find(b => b.id === billId) : APP.currentBillForPrint;
+	if (!bill) { showToast('Chek topilmadi', 'warning'); return; }
+	if (!ThermalPrinter.supported()) {
+		showToast("Brauzer Web Bluetooth qo'llamaydi (Chrome/Edge ishlating)", 'warning');
+		return;
+	}
+	try {
+		if (!ThermalPrinter.isConnected()) {
+			await ThermalPrinter.connect();
+		}
+		showToast('Chek yuborilmoqda...');
+		await ThermalPrinter.write(ThermalPrinter.buildReceipt(bill));
+		showToast('Chek termal printerga yuborildi', 'success');
+		if (typeof updateThermalUI === 'function') updateThermalUI();
+	} catch (e) {
+		if (e && e.name === 'NotFoundError') { showToast('Printer tanlanmadi', 'info'); return; }
+		console.warn('Termal chop etish xato:', e);
+		showToast("Termal printer xatosi. Qayta urinib ko'ring.", 'error');
+	}
 }
 
 // ─────────────────────────────────────────────
@@ -4673,19 +4900,20 @@ function openRefundModal(billId) {
  .reduce((s, r) => s + (Number(r.qty) || 0), 0);
  const available = Math.max(0, item.qty - alreadyRefunded);
 
- return `
- <div class="refund-item-row" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
- <div style="flex:1">
- <div style="font-weight:600">${escHtml(item.name)}</div>
- <div style="font-size:0.75rem;color:var(--text3)">${formatPrice(item.price)} × ${item.qty} ta (Qaytarilgan: ${alreadyRefunded} ta)</div>
- </div>
- <div style="display:flex;align-items:center;gap:8px">
- <span style="font-size:0.8rem">Qaytarish:</span>
- <input type="number" id="refund-qty-${item.id}" min="0" max="${available}" value="0" ${available === 0 ? 'disabled' : ''} style="width:60px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);text-align:center;background:var(--bg2);color:var(--text)">
- <span style="font-size:0.75rem;color:var(--text3)">/ ${available} ta</span>
- </div>
- </div>
- `;
+	const unit = item.unit || 'ta';
+	return `
+	<div class="refund-item-row" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+		<div style="flex:1">
+			<div style="font-weight:600">${escHtml(item.name)}</div>
+			<div style="font-size:0.75rem;color:var(--text3)">${formatPrice(item.price)} × ${item.qty} ${escHtml(unit)} (Qaytarilgan: ${alreadyRefunded} ${escHtml(unit)})</div>
+		</div>
+		<div style="display:flex;align-items:center;gap:8px">
+			<span style="font-size:0.8rem">Qaytarish:</span>
+			<input type="number" step="any" inputmode="decimal" id="refund-qty-${item.id}" min="0" max="${available}" value="0" ${available === 0 ? 'disabled' : ''} style="width:76px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);text-align:center;background:var(--bg2);color:var(--text)">
+			<span style="font-size:0.75rem;color:var(--text3)">/ ${available} ${escHtml(unit)}</span>
+		</div>
+	</div>
+	`;
  }).join('');
 
  openModal('refundModal');
@@ -4698,18 +4926,20 @@ async function submitRefund() {
  const refunds = bill.refunds || [];
  const toRefund = [];
 
- for (const item of bill.items) {
- const input = document.getElementById(`refund-qty-${item.id}`);
- const qty = parseInt(input ? input.value : 0, 10) || 0;
- if (qty > 0) {
- const alreadyRefunded = refunds
- .filter(r => r.itemId === item.id)
- .reduce((s, r) => s + (Number(r.qty) || 0), 0);
- const available = Math.max(0, item.qty - alreadyRefunded);
- if (qty > available) {
- showToast(`Diqqat: ${item.name} uchun koʻpi bilan ${available} ta qaytarish mumkin!`, 'warning');
- return;
- }
+	for (const item of bill.items) {
+		const input = document.getElementById(`refund-qty-${item.id}`);
+		// Kasr miqdorlarni (kg/gramm) qo'llab-quvvatlash uchun parseFloat
+		const qty = Math.round((parseFloat(input ? input.value : 0) || 0) * 1000) / 1000;
+		if (qty > 0) {
+			const unit = item.unit || 'ta';
+			const alreadyRefunded = refunds
+				.filter(r => r.itemId === item.id)
+				.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+			const available = Math.max(0, item.qty - alreadyRefunded);
+			if (qty > available + 1e-9) {
+				showToast(`Diqqat: ${item.name} uchun koʻpi bilan ${available} ${unit} qaytarish mumkin!`, 'warning');
+				return;
+			}
  toRefund.push({ item, qty });
  }
  }
@@ -4775,7 +5005,7 @@ async function submitRefund() {
       if (typeof increment === 'function') {
        batch.update(pRef, { stock: increment(qty), updatedAt: new Date().toISOString() });
       } else {
-       batch.update(pRef, { stock: (parseInt(prod.stock, 10) || 0) + qty, updatedAt: new Date().toISOString() });
+       batch.update(pRef, { stock: (parseFloat(prod.stock) || 0) + qty, updatedAt: new Date().toISOString() });
       }
      }
     }
@@ -4790,7 +5020,7 @@ async function submitRefund() {
     for (const { item, qty } of toRefund) {
      const prod = APP.products.find(p => p.id === item.id);
      if (prod && isTracked(prod)) {
-      prod.stock = (parseInt(prod.stock, 10) || 0) + qty;
+      prod.stock = (parseFloat(prod.stock) || 0) + qty;
       prod.updatedAt = new Date().toISOString();
      }
     }
@@ -4801,7 +5031,7 @@ async function submitRefund() {
     for (const { item, qty } of toRefund) {
      const prod = APP.products.find(p => p.id === item.id);
      if (prod && isTracked(prod)) {
-      prod.stock = (parseInt(prod.stock, 10) || 0) + qty;
+      prod.stock = (parseFloat(prod.stock) || 0) + qty;
       prod.updatedAt = new Date().toISOString();
      }
     }
@@ -4830,7 +5060,7 @@ async function submitRefund() {
    for (const { item, qty } of toRefund) {
     const prod = APP.products.find(p => p.id === item.id);
     if (prod && isTracked(prod)) {
-     prod.stock = (parseInt(prod.stock, 10) || 0) + qty;
+     prod.stock = (parseFloat(prod.stock) || 0) + qty;
      prod.updatedAt = new Date().toISOString();
     }
    }
@@ -4858,7 +5088,7 @@ async function submitRefund() {
    for (const { item, qty } of toRefund) {
     const prod = APP.products.find(p => p.id === item.id);
     if (prod && isTracked(prod)) {
-     prod.stock = (parseInt(prod.stock, 10) || 0) + qty;
+     prod.stock = (parseFloat(prod.stock) || 0) + qty;
      prod.updatedAt = new Date().toISOString();
     }
    }
@@ -4962,7 +5192,7 @@ function renderShiftStats(dateStr) {
  totalProfit
  };
 
- const content = document.getElementById('shiftReportContent');
+ const content = document.getElementById('shiftStatsSummary');
  if (content) {
  content.innerHTML = `
  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
@@ -4997,7 +5227,7 @@ function renderShiftStats(dateStr) {
 
 function calculateCashDiscrepancy() {
  const input = document.getElementById('actualCashInput');
- const resultEl = document.getElementById('cashDifferenceText');
+ const resultEl = document.getElementById('cashDiscrepancyBox');
  if (!resultEl) return;
 
  const actual = parseFloat(input ? input.value : 0) || 0;
@@ -5423,6 +5653,11 @@ window.fetchProductImageOnline = fetchProductImageOnline;
 window.searchProductOnGoogle = searchProductOnGoogle;
 window.showBillDetail = showBillDetail;
 window.printBill = printBill;
+window.thermalPrintBill = thermalPrintBill;
+window.connectThermalPrinter = connectThermalPrinter;
+window.disconnectThermalPrinter = disconnectThermalPrinter;
+window.updateThermalUI = updateThermalUI;
+window.ThermalPrinter = ThermalPrinter;
 window.clearAllBills = clearAllBills;
 window.openModal = openModal;
 window.closeModal = closeModal;
@@ -5937,17 +6172,23 @@ function renderDebtors(list) {
  <span>${icon('receipt', 14)} Berildi: <b>${formatPrice(totalGiven)}</b></span>
  <span>${icon('check', 14, 'icon-green')} To'landi: <b>${formatPrice(totalPaid)}</b></span>
  </div>
- <div class="debtor-actions">
- <button class="btn-primary btn-sm" onclick="openAddDebtModal('${debtor.id}'); event.stopPropagation()">
- ${icon('plus', 14)} Nasiya
- </button>
- <button class="btn-secondary btn-sm" onclick="editDebtor('${debtor.id}'); event.stopPropagation()">
- ${icon('edit', 14)} Tahrirlash
- </button>
- <button class="btn-danger btn-sm" onclick="deleteDebtor('${debtor.id}'); event.stopPropagation()">
- ${icon('trash', 14)} O'chirish
- </button>
- </div>
+	<div class="debtor-actions" style="flex-wrap:wrap;">
+		<button class="btn-primary btn-sm" onclick="openAddDebtModal('${debtor.id}'); event.stopPropagation()">
+			${icon('plus', 14)} Nasiya
+		</button>
+		<button class="btn-secondary btn-sm" ${isPaid ? 'disabled' : ''} onclick="sendDebtReminder('${debtor.id}', 'telegram'); event.stopPropagation()" title="Telegram orqali eslatish">
+			Telegram
+		</button>
+		<button class="btn-secondary btn-sm" ${(!isPaid && debtor.phone) ? '' : 'disabled'} onclick="sendDebtReminder('${debtor.id}', 'sms'); event.stopPropagation()" title="SMS orqali eslatish">
+			SMS
+		</button>
+		<button class="btn-secondary btn-sm" onclick="editDebtor('${debtor.id}'); event.stopPropagation()">
+			${icon('edit', 14)} Tahrirlash
+		</button>
+		<button class="btn-danger btn-sm" onclick="deleteDebtor('${debtor.id}'); event.stopPropagation()">
+			${icon('trash', 14)} O'chirish
+		</button>
+	</div>
  <!-- Nasiyalar ro'yxati -->
  <div class="debt-items">
  ${debtorDebts.length === 0
@@ -6141,6 +6382,52 @@ async function submitPayment() {
  } else {
   showToast(`${formatPrice(paid)} qabul qilindi. Qoldi: ${formatPrice(remaining)}`, 'success');
  }
+}
+
+// ── Qarz eslatmasini SMS / Telegram orqali yuborish ──
+function buildDebtReminderText(debtor) {
+	const balance = debtorBalance(debtor.id);
+	const shop = (APP.settings && APP.settings.shopName) || "Do'kon";
+	const phone = (APP.settings && APP.settings.shopPhone) || '';
+	let text = `Hurmatli ${debtor.name}, ${shop} do'konidan ${formatPrice(balance)} so'm nasiya qarzingiz bor. Iltimos, to'lovni amalga oshiring. Rahmat!`;
+	if (phone) text += ` Tel: ${phone}`;
+	return text;
+}
+
+function sendDebtReminder(debtorId, channel = 'telegram') {
+	const debtor = APP.debtors.find(d => d.id === debtorId);
+	if (!debtor) return;
+	const balance = debtorBalance(debtorId);
+	if (balance <= 0) { showToast("Bu mijozda qarz yo'q", 'info'); return; }
+	const text = buildDebtReminderText(debtor);
+	const phoneDigits = String(debtor.phone || '').replace(/\D/g, '');
+
+	if (channel === 'sms') {
+		if (!phoneDigits) { showToast("Telefon raqami yo'q", 'warning'); return; }
+		window.location.href = `sms:+${phoneDigits}?body=${encodeURIComponent(text)}`;
+		return;
+	}
+
+	// Telegram: telefon bo'lsa to'g'ridan-to'g'ri chat, aks holda ulashish oynasi
+	let tgUrl;
+	if (phoneDigits) {
+		const intl = phoneDigits.length === 9 ? '998' + phoneDigits : phoneDigits;
+		tgUrl = `https://t.me/+${intl}`;
+	} else {
+		tgUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
+	}
+	window.open(tgUrl, '_blank', 'noopener');
+}
+
+function copyDebtReminder(debtorId) {
+	const debtor = APP.debtors.find(d => d.id === debtorId);
+	if (!debtor) return;
+	const text = buildDebtReminderText(debtor);
+	if (navigator.clipboard && navigator.clipboard.writeText) {
+		navigator.clipboard.writeText(text).then(() => showToast('Eslatma matni nusxalandi', 'success'));
+	} else {
+		showToast(text);
+	}
 }
 
 // ── showPage hook: nasiya sahifasi ochilganda render ──
@@ -7320,7 +7607,9 @@ function printCurrentModalProductLabel() {
 
 function printBarcodeLabel() {
  if (typeof window !== 'undefined' && typeof window.print === 'function') {
+  document.body.classList.add('print-label-mode');
   window.print();
+  document.body.classList.remove('print-label-mode');
  } else {
   showToast('Chop etish rejimi tayyorlandi');
  }
@@ -7460,12 +7749,16 @@ window.saveDebtor = saveDebtor;
 window.deleteDebtor = deleteDebtor;
 window.recordDebt = recordDebt;
 window.submitPayment = submitPayment;
+window.sendDebtReminder = sendDebtReminder;
+window.copyDebtReminder = copyDebtReminder;
+window.buildDebtReminderText = buildDebtReminderText;
 window.saveDebtorToDB = saveDebtorToDB;
 window.deleteDebtorFromDB = deleteDebtorFromDB;
 window.saveDebtToDB = saveDebtToDB;
 window.deleteDebtFromDB = deleteDebtFromDB;
 window.listenFirestoreProducts = listenFirestoreProducts;
 window.listenFirestoreBills = listenFirestoreBills;
+window.loadMoreBills = loadMoreBills;
 window.listenFirestoreDebtors = listenFirestoreDebtors;
 window.listenFirestoreDebts = listenFirestoreDebts;
 window.renderDebtors = renderDebtors;
@@ -7548,6 +7841,7 @@ window.triggerPaymentReceipt = triggerPaymentReceipt;
 window.handlePaymentReceiptFile = handlePaymentReceiptFile;
 window.removePaymentReceipt = removePaymentReceipt;
 window.copyPaymentCard = copyPaymentCard;
+window.renderSupportLinks = renderSupportLinks;
 window.openReceiptLightbox = openReceiptLightbox;
 window.closeReceiptLightbox = closeReceiptLightbox;
 window.renderSubscriptionUI = renderSubscriptionUI;
@@ -7555,7 +7849,6 @@ window.getAccessState = getAccessState;
 window.canAddProduct = canAddProduct;
 window.isAdminUser = isAdminUser;
 window.isAdminByEmail = isAdminByEmail;
-window.unlockAdminWithCode = unlockAdminWithCode;
 window.PLANS = PLANS;
 window.openAdminPanel = openAdminPanel;
 window.adminSetTab = adminSetTab;

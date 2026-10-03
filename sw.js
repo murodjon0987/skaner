@@ -1,5 +1,5 @@
 // ScanPOS Service Worker (Offline Cache)
-const CACHE_NAME = 'scanpos-v25';
+const CACHE_NAME = 'scanpos-v26';
 const LOCAL_ASSETS = [
   './',
   './index.html',
@@ -103,7 +103,7 @@ self.addEventListener('fetch', (e) => {
           return res;
         })
         .catch(async () => {
-          const cached = await caches.match(e.request);
+          const cached = await caches.match(e.request, { ignoreSearch: true });
           if (cached) return cached;
           return new Response('Internetga ulanish mavjud emas', {
             status: 503,

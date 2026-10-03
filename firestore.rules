@@ -37,14 +37,13 @@ service cloud.firestore {
     }
 
     // Admin allowlist hujjatlari
-    // - Admin email o'zi uchun yozo oladi
-    // - Yoki maxfiy kod bilan ("wenzone") o'zini admin qilib qo'sha oladi
+    // XAVFSIZLIK: avvalgi "wenzone" maxfiy kod sharti olib tashlandi — u
+    // istalgan foydalanuvchiga o'zini admin qilib qo'shish (privilege
+    // escalation) imkonini berardi. Endi allowlist'ni faqat mavjud admin
+    // (ADMIN_EMAILS yoki allaqachon allowlist'da bor uid) boshqaradi.
     match /admins/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      allow create: if isSignedIn() && request.auth.uid == uid
-        && (isAdminByEmail() || request.resource.data.code == 'wenzone');
-      allow update: if isAdmin() && request.auth.uid == uid;
-      allow delete: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     // Obuna uchun to'lov so'rovlari (manual to'lov)

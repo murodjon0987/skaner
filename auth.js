@@ -140,9 +140,9 @@
     if (!auth) { showAuthError("Firebase ulanmagan. Sahifani yangilab qayta urinib ko'ring."); return; }
     clearAuthError();
     setBusy(true);
+    const provider = new authMod.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
     try {
-      const provider = new authMod.GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
       await authMod.signInWithPopup(auth, provider);
       // Muvaffaqiyatda onAuthStateChanged ishlaydi
     } catch (e) {
@@ -263,7 +263,10 @@
         onSnapshot: firestoreMod.onSnapshot,
         serverTimestamp: firestoreMod.serverTimestamp,
         writeBatch: firestoreMod.writeBatch,
-        increment: firestoreMod.increment
+        increment: firestoreMod.increment,
+        query: firestoreMod.query,
+        orderBy: firestoreMod.orderBy,
+        limit: firestoreMod.limit
       };
 
       // Mobil redirect natijasini qayta ishlash
