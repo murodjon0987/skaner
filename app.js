@@ -837,6 +837,11 @@ async function lookupBarcodeOnline(barcode) {
   .then(async res => (res.ok ? _ofResult((await res.json()).product, 'boshqa') : null))
   .catch(() => null);
 
+ // 3b. Open Pet Food Facts (hayvon ozuqasi)
+ const reqPet = fetchWithTimeout(ofUrl('world.openpetfoodfacts.org'), {}, 6000)
+  .then(async res => (res.ok ? _ofResult((await res.json()).product, 'boshqa') : null))
+  .catch(() => null);
+
  // 4. UPC Item DB (global EAN/UPC katalogi)
  const reqUpc = fetchWithTimeout(
   `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(clean)}`,
@@ -856,10 +861,20 @@ async function lookupBarcodeOnline(barcode) {
   return null;
  }).catch(() => null);
 
- const results = await Promise.all([reqFood, reqBeauty, reqProducts, reqUpc]);
+ const results = await Promise.all([reqFood, reqBeauty, reqProducts, reqPet, reqUpc]);
  // Rasmli natijani afzal ko'ramiz
  const withImage = results.find(r => r && r.name && r.image);
  return withImage || results.find(r => r && r.name) || null;
+}
+
+// Google'da rasm/nom bo'yicha qidirish (ochiq manbalarda topilmaganda)
+function searchProductOnGoogle() {
+ const barcode = (document.getElementById('productBarcode')?.value || '').trim();
+ const name = (document.getElementById('productName')?.value || '').trim();
+ const q = [name, barcode].filter(Boolean).join(' ').trim();
+ if (!q) { showToast('Nom yoki shtrix-kod kiriting', 'warning'); return; }
+ const url = 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(q);
+ try { window.open(url, '_blank', 'noopener'); } catch (e) { try { location.href = url; } catch (e2) {} }
 }
 
 /** categories_tags massividan kategoriya aniqlaymiz */
@@ -3886,29 +3901,9 @@ async function fetchProductImageOnline() {
  }
  }
 
- // 2. Nom orqali OpenFoodFacts search
- if (name) {
- try {
- const queryRes = await fetchWithTimeout(
- `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(name)}&search_simple=1&action=process&json=1&page_size=1`,
- {}, 6000
- );
- if (queryRes.ok) {
- const qData = await queryRes.json();
- const p = qData.products?.[0];
- if (p && (p.image_front_url || p.image_url || p.image_small_url)) {
- const img = p.image_front_url || p.image_url || p.image_small_url;
- setModalProductImage(img);
- showToast(`"${name}" uchun haqiqiy rasm topildi!`);
- return;
- }
- }
- } catch (e) {
- console.warn(e);
- }
- }
-
- showToast('Internetdan bu mahsulot rasmi topilmadi. Kamera yoki galereyadan yuklang.');
+ // Ochiq bazalarda topilmasa — Google'da rasm qidirishni taklif qilamiz
+ showToast("Ochiq bazalarda topilmadi. Google'da qidirib, rasmni yuklang.");
+ searchProductOnGoogle();
 }
 
 async function saveProduct() {
@@ -5425,6 +5420,7 @@ window.setModalProductImage = setModalProductImage;
 window.removeProductImage = removeProductImage;
 window.handleProductImageFile = handleProductImageFile;
 window.fetchProductImageOnline = fetchProductImageOnline;
+window.searchProductOnGoogle = searchProductOnGoogle;
 window.showBillDetail = showBillDetail;
 window.printBill = printBill;
 window.clearAllBills = clearAllBills;
