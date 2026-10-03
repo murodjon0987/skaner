@@ -1873,10 +1873,21 @@
         <p class="paywall-intro" id="paywallIntro">Yangi hisoblar uchun <b>14 kunlik bepul sinov</b> avtomatik boshlanadi. Sinov tugagach, cheksiz imkoniyatlar uchun tarif tanlang.</p>
         <div class="plan-cards" id="planCards"></div>
         <div id="paywallConfirm" class="paywall-confirm hidden">
-          <div class="paywall-confirm-plan">
+          <div class="paywall-confirm-card">
+            <div class="paywall-confirm-glow"></div>
+            <div class="paywall-confirm-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
+              </svg>
+            </div>
             <div class="paywall-confirm-label">Tanlangan tarif</div>
             <div class="paywall-confirm-name" id="confirmPlanName">—</div>
             <div class="paywall-confirm-price" id="confirmPlanPrice">—</div>
+            <ul class="paywall-confirm-features" id="confirmPlanFeatures"></ul>
+          </div>
+          <div class="paywall-confirm-note">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Xavfsiz to'lov — Payme / Click / karta orqali
           </div>
           <button type="button" class="btn-primary btn-full" onclick="proceedToPayment()">O'tkazish</button>
           <button type="button" class="btn-secondary btn-full" onclick="backToPaywallPlans()" style="margin-top:8px;">Orqaga</button>
@@ -1886,7 +1897,7 @@
 
           <div class="paywall-amount-box">
             <span>To'lov summasi</span>
-            <b id="payAmount">0 so'm</b>
+            <b id="paywallAmount">0 so'm</b>
           </div>
 
           <div class="paywall-card-info">

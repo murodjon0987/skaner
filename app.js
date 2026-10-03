@@ -1497,6 +1497,8 @@ function choosePlan(planKey) {
  if (intro) intro.classList.add('hidden');
  const cn = document.getElementById('confirmPlanName'); if (cn) cn.textContent = plan.name;
  const cp = document.getElementById('confirmPlanPrice'); if (cp) cp.textContent = plan.priceLabel;
+ const cf = document.getElementById('confirmPlanFeatures');
+ if (cf) cf.innerHTML = (plan.features || []).map(f => `<li>${escHtml(f)}</li>`).join('');
  if (confirm) confirm.classList.remove('hidden');
 }
 
@@ -1529,8 +1531,8 @@ function proceedToPayment() {
  const ch = document.getElementById('payCardHolder');
  if (cn) cn.textContent = PAYMENT_INFO.cardNumber;
  if (ch) ch.textContent = PAYMENT_INFO.cardHolder;
- const amt = document.getElementById('payAmount');
- if (amt) amt.textContent = formatPrice(plan.price) + " so'm";
+ const amt = document.getElementById('paywallAmount');
+ if (amt) amt.textContent = formatPrice(plan.price);
  resetPaywallForm();
  if (area) {
   area.classList.remove('hidden');
