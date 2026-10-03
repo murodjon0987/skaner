@@ -278,6 +278,8 @@ function planByKey(key) { return PLANS[key] || PLANS.free; }
 function isAdminByEmail(user) {
  const u = user || (typeof window !== 'undefined' ? window.currentUser : null);
  if (!u) return false;
+ // Email tasdiqlanmagan bo'lsa admin deb hisoblamaymiz (rules bilan bir xil).
+ if (u.emailVerified === false) return false;
  const email = String(u.email || '').toLowerCase();
  return ADMIN_EMAILS.map(e => e.toLowerCase()).includes(email);
 }

@@ -19,11 +19,15 @@ service cloud.firestore {
     }
 
     // Admin emaillar (app.js dagi ADMIN_EMAILS bilan bir xil bo'lishi kerak)
+    // MUHIM: email tasdiqlangan (verified) bo'lishi shart — aks holda yangi
+    // ro'yxatdan o'tgan hisob admin email'ini egallab, admin bo'lib olishi mumkin.
     function isAdminByEmail() {
-      return isSignedIn() && (
-        request.auth.token.email == 'syodgorov47@gmail.com' ||
-        request.auth.token.email == 'wenzonepeser@gmail.com'
-      );
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && (
+          request.auth.token.email == 'syodgorov47@gmail.com' ||
+          request.auth.token.email == 'wenzonepeser@gmail.com'
+        );
     }
 
     // Admin: email YOKI `admins/{uid}` allowlist hujjati mavjud
@@ -55,7 +59,27 @@ service cloud.firestore {
 
     // Foydalanuvchi profili va sub-kolleksiyalari
     match /users/{userId} {
-      allow read, write: if ownerOrAdmin(userId);
+      allow read: if ownerOrAdmin(userId);
+
+      // Yangi profil: foydalanuvchi faqat o'zi uchun, "free" tarif va faol
+      // bo'lmagan obuna bilan yarata oladi (o'zini pullik tarifga o'tkaza olmaydi).
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.plan == 'free'
+        && request.resource.data.subscription.status != 'active';
+
+      // Tahrirlash: admin hammasini; egasi esa tarif/obuna/trial maydonlarini
+      // o'zgartirmagan holda. Shu tarzda foydalanuvchi o'zini obunali qilib
+      // qo'ya olmaydi — obunani faqat admin (to'lovni tasdiqlab) faollashtiradi.
+      allow update: if isAdmin()
+        || (isSignedIn()
+            && request.auth.uid == userId
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                 .hasAny(['uid', 'plan', 'subscription', 'trialEndsAt']));
+
+      // O'chirish faqat admin: aks holda foydalanuvchi hujjatni o'chirib,
+      // qayta yaratib sinov muddatini cheksiz yangilab olishi mumkin edi.
+      allow delete: if isAdmin();
 
       // Ma'lumot sub-kolleksiyalari (owner yoki admin)
       match /products/{docId} { allow read, write: if ownerOrAdmin(userId); }
