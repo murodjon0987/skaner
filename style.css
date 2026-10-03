@@ -336,7 +336,12 @@ body {
   display: none;
   flex-direction: column;
   height: 100%;
-  overflow: hidden;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 #page-scanner.active {
@@ -889,26 +894,23 @@ body {
 
 /* ====== CART ====== */
 .cart-section {
-  flex: 1;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   padding: 0;
 }
 
 .cart-list {
-  flex: 1;
-  min-height: 0;
+  flex: none;
   list-style: none;
   margin: 0;
-  padding: 4px 14px 14px;
+  padding: 4px 14px 20px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  overflow: visible;
 }
 
 .cart-list::-webkit-scrollbar {
