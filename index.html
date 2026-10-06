@@ -123,7 +123,7 @@
     };
   </script>
 
-  <link rel="stylesheet" href="style.css?v=5.2.0" />
+  <link rel="stylesheet" href="style.css?v=5.2.1" />
 </head>
 
 <body>
@@ -902,13 +902,19 @@
               </div>
               <label class="toggle-switch"><input type="checkbox" id="happyHoursEnabled" checked onchange="saveSettings()" /><span class="toggle-slider"></span></label>
             </div>
-            <div class="settings-item toggle-item" style="gap:10px;">
-              <label>Vaqt oraliqlari & Foiz</label>
-              <div style="display:flex;gap:6px;align-items:center;">
-                <input type="time" id="happyHoursStart" value="20:00" class="small-input" style="width:80px;" onchange="saveSettings()" />
-                <span style="color:var(--text3);">-</span>
-                <input type="time" id="happyHoursEnd" value="23:00" class="small-input" style="width:80px;" onchange="saveSettings()" />
-                <input type="number" id="happyHoursDiscount" value="20" min="1" max="80" class="small-input" style="width:50px;" onchange="saveSettings()" /><span class="unit">%</span>
+            <div class="settings-item toggle-item" style="gap:12px;flex-wrap:wrap;">
+              <div>
+                <label style="display:block;margin-bottom:2px;">Vaqt oraliqlari & Foiz</label>
+                <span style="font-size:0.75rem;color:var(--text3);">Chegirma soatlari va foizi</span>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <input type="time" id="happyHoursStart" value="20:00" class="time-input" onchange="saveSettings()" />
+                <span style="color:var(--text3);font-weight:700;">-</span>
+                <input type="time" id="happyHoursEnd" value="23:00" class="time-input" onchange="saveSettings()" />
+                <div style="display:inline-flex;align-items:center;gap:4px;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:2px 8px;height:36px;">
+                  <input type="number" id="happyHoursDiscount" value="20" min="1" max="80" style="width:38px;text-align:center;background:transparent;border:none;color:var(--text);font-weight:700;font-size:0.9rem;outline:none;padding:0;" onchange="saveSettings()" />
+                  <span class="unit" style="color:var(--purple);font-weight:700;">%</span>
+                </div>
               </div>
             </div>
             <div class="settings-item toggle-item">

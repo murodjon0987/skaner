@@ -11,6 +11,7 @@
 }
 
 :root {
+  color-scheme: dark;
   --bg: #0d0f1a;
   --bg2: #131626;
   --bg3: #1a1d30;
@@ -37,6 +38,7 @@
 
 html,
 body {
+  color-scheme: dark;
   height: 100%;
   height: 100dvh;
   min-height: 100dvh;
@@ -1699,6 +1701,8 @@ body {
 .settings-item input[type="text"],
 .settings-item input[type="tel"],
 .settings-item input[type="number"],
+.settings-item input[type="time"],
+.settings-item input[type="date"],
 .settings-item select {
   background: var(--card2);
   border: 1px solid var(--border);
@@ -1709,6 +1713,7 @@ body {
   font-size: 0.85rem;
   outline: none;
   width: 100%;
+  color-scheme: dark;
 }
 
 .settings-item input:focus,
@@ -1725,6 +1730,55 @@ body {
 .small-input {
   width: 60px !important;
   text-align: center;
+}
+
+.time-input {
+  width: 110px !important;
+  min-width: 110px !important;
+  height: 36px !important;
+  background: var(--card2) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  padding: 6px 10px !important;
+  font-family: 'Inter', monospace, sans-serif !important;
+  font-size: 0.88rem !important;
+  font-weight: 600 !important;
+  color-scheme: dark !important;
+  outline: none !important;
+  text-align: center;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.time-input:focus {
+  border-color: var(--purple) !important;
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.25) !important;
+}
+
+/* Global Date & Time Picker Controls (Dark Theme) */
+input[type="time"],
+input[type="date"],
+input[type="datetime-local"] {
+  color-scheme: dark !important;
+  background-color: var(--card2) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}
+
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.85) brightness(1.2) !important;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.2s, filter 0.2s;
+}
+
+input[type="time"]::-webkit-calendar-picker-indicator:hover,
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  filter: invert(1) brightness(1.5) !important;
 }
 
 .unit {
