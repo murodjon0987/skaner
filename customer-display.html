@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ScanPOS – Mijoz Ekrani (Customer Display)</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0b0d17;
+      --bg-card: rgba(22, 27, 46, 0.75);
+      --border: rgba(255, 255, 255, 0.08);
+      --primary: #a855f7;
+      --primary-glow: rgba(168, 85, 247, 0.35);
+      --green: #22c55e;
+      --green-glow: rgba(34, 197, 94, 0.25);
+      --cyan: #06b6d4;
+      --red: #ef4444;
+      --text: #f8fafc;
+      --text2: #94a3b8;
+      --text3: #64748b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: radial-gradient(circle at top right, #1a1533 0%, var(--bg) 60%);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 28px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(11, 13, 23, 0.8);
+      backdrop-filter: blur(16px);
+    }
+    .header-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-logo img {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+    }
+    .shop-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .header-clock {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--cyan);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .clock-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1.45fr 1fr;
+      gap: 24px;
+      padding: 24px 28px;
+      max-width: 1600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    @media (max-width: 960px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      backdrop-filter: blur(20px);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Ambient Idle State */
+    .idle-view {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      height: 100%;
+      padding: 40px 20px;
+      gap: 20px;
+    }
+    .idle-icon-wrap {
+      width: 90px;
+      height: 90px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(6, 182, 212, 0.2));
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 30px rgba(168, 85, 247, 0.2);
+    }
+    .idle-icon-wrap svg {
+      width: 44px;
+      height: 44px;
+      stroke: var(--primary);
+    }
+    .idle-title {
+      font-size: 1.8rem;
+      font-weight: 800;
+    }
+    .idle-sub {
+      color: var(--text2);
+      font-size: 1.05rem;
+      max-width: 420px;
+    }
+    .promo-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      width: 100%;
+      margin-top: 10px;
+    }
+    .promo-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      text-align: left;
+    }
+    .promo-card b { display: block; color: var(--primary); font-size: 1.05rem; margin-bottom: 4px; }
+    .promo-card p { font-size: 0.85rem; color: var(--text3); }
+
+    /* Active Cart Table */
+    .cart-view {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+    }
+    .cart-header-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .cart-header-title h2 {
+      font-size: 1.3rem;
+      font-weight: 800;
+    }
+    .item-count-badge {
+      font-size: 0.85rem;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(168, 85, 247, 0.15);
+      color: var(--primary);
+      font-weight: 700;
+    }
+    .cart-table-wrap {
+      flex: 1;
+      overflow-y: auto;
+      max-height: calc(100vh - 280px);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    th {
+      font-size: 0.78rem;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 14px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      font-size: 0.95rem;
+    }
+    tr.new-item {
+      animation: highlightRow 1.2s ease-out;
+    }
+    @keyframes highlightRow {
+      0% { background: rgba(168, 85, 247, 0.25); }
+      100% { background: transparent; }
+    }
+    .td-name { font-weight: 700; }
+    .td-qty { color: var(--cyan); font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .td-price { color: var(--text2); }
+    .td-total { font-weight: 800; text-align: right; color: #fff; font-family: 'JetBrains Mono', monospace; }
+
+    /* Right Checkout Summary Panel */
+    .summary-panel {
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .customer-badge {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      background: rgba(168, 85, 247, 0.12);
+      border: 1px solid rgba(168, 85, 247, 0.3);
+      border-radius: 12px;
+      padding: 10px 14px;
+    }
+    .customer-badge-info b { font-size: 0.95rem; color: #fff; }
+    .customer-badge-info span { font-size: 0.78rem; color: var(--cyan); display: block; }
+
+    .grand-card {
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(6, 182, 212, 0.08));
+      border: 1px solid rgba(34, 197, 94, 0.25);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+      box-shadow: 0 10px 30px var(--green-glow);
+    }
+    .grand-label {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .grand-amount {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 2.7rem;
+      font-weight: 900;
+      color: var(--green);
+      margin: 8px 0;
+      letter-spacing: -1px;
+    }
+    .grand-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .grand-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      color: var(--text2);
+    }
+    .grand-row b { color: #fff; }
+    .discount-val { color: var(--red); }
+    .bonus-val { color: var(--cyan); }
+
+    /* Dynamic Payment QR Section */
+    .payment-qr-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 12px;
+      padding: 18px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
+    .qr-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .qr-box {
+      background: #fff;
+      padding: 12px;
+      border-radius: 12px;
+      display: inline-flex;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+    .qr-box img, .qr-box svg {
+      width: 140px;
+      height: 140px;
+    }
+    .qr-apps-logos {
+      display: flex;
+      gap: 12px;
+      font-size: 0.75rem;
+      color: var(--text3);
+      font-weight: 600;
+    }
+    .qr-apps-logos span {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    /* Celebration Overlay on Sale Complete */
+    .success-celebration {
+      position: fixed;
+      inset: 0;
+      background: rgba(11, 13, 23, 0.92);
+      backdrop-filter: blur(16px);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      text-align: center;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .success-icon-box {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #22c55e, #10b981);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 50px rgba(34, 197, 94, 0.5);
+      margin-bottom: 24px;
+      animation: bounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes bounce { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+    .success-celebration h1 {
+      font-size: 2.2rem;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+    .success-celebration p {
+      color: var(--text2);
+      font-size: 1.15rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-logo">
+      <img src="logo.svg" alt="ScanPOS" onerror="this.src='icon-192.png'" />
+      <div class="shop-title" id="displayShopName">ScanPOS Market</div>
+    </div>
+    <div class="header-clock">
+      <div class="clock-dot"></div>
+      <span id="liveClock">12:00:00</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left Column: Cart items or Idle Greeting -->
+    <section class="panel">
+      <!-- Idle State -->
+      <div class="idle-view" id="idleView">
+        <div class="idle-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>
+          </svg>
+        </div>
+        <h1 class="idle-title">Xush kelibsiz!</h1>
+        <p class="idle-sub">Xaridingiz uchun rahmat. Tovarlar kassir tomonidan skanerlanganda bu yerda avtomatik paydo bo'ladi.</p>
+        <div class="promo-cards">
+          <div class="promo-card">
+            <b>⚡ Doimiy Keshbek</b>
+            <p>Har bir xaridingizdan 2% shaxsiy bonus hisobingizga yig'iladi.</p>
+          </div>
+          <div class="promo-card">
+            <b>💳 Tezkor QR To'lov</b>
+            <p>Click, Payme yoki Uzum orqali bevosita ekrandan to'lang.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Cart State -->
+      <div class="cart-view" id="cartView">
+        <div class="cart-header-title">
+          <h2>Savatdagi mahsulotlar</h2>
+          <span class="item-count-badge" id="displayItemCount">0 ta mahsulot</span>
+        </div>
+        <div class="cart-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:36px;">#</th>
+                <th>Mahsulot</th>
+                <th style="width:90px;">Miqdor</th>
+                <th style="width:110px;">Narx</th>
+                <th style="width:130px;text-align:right;">Jami</th>
+              </tr>
+            </thead>
+            <tbody id="cartTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Grand Total, Customer Loyalty, and Payment QR -->
+    <section class="panel summary-panel">
+      <div class="customer-badge" id="customerBadge">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary);flex-shrink:0;">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+        <div class="customer-badge-info">
+          <b id="customerName">Mijoz</b>
+          <span id="customerLoyaltyInfo">0% chegirma · 0 so'm bonus</span>
+        </div>
+      </div>
+
+      <div class="grand-card">
+        <div class="grand-label">To'lov summasi</div>
+        <div class="grand-amount" id="displayGrandTotal">0 so'm</div>
+        <div class="grand-rows">
+          <div class="grand-row">
+            <span>Oraliq summa:</span>
+            <b id="displaySubtotal">0 so'm</b>
+          </div>
+          <div class="grand-row" id="displayDiscountRow" style="display:none;">
+            <span>Chegirma:</span>
+            <b class="discount-val" id="displayDiscount">-0 so'm</b>
+          </div>
+          <div class="grand-row" id="displayBonusRow" style="display:none;">
+            <span>Bonusdan to'lov:</span>
+            <b class="bonus-val" id="displayBonus">-0 so'm</b>
+          </div>
+          <div class="grand-row" id="displayEarnedBonusRow" style="display:none;">
+            <span>Yig'iladigan keshbek:</span>
+            <b style="color:var(--green);" id="displayEarnedBonus">+0 so'm</b>
+          </div>
+        </div>
+      </div>
+
+      <div class="payment-qr-wrap">
+        <div class="qr-title">Tezkor to'lov uchun QR-kod</div>
+        <div class="qr-box" id="qrContainer">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=ScanPOS-Payment" alt="QR Code" id="qrImage" />
+        </div>
+        <div class="qr-apps-logos">
+          <span>Click</span>
+          <span>Payme</span>
+          <span>Uzum Bank</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Celebration Modal -->
+  <div class="success-celebration" id="successCelebration">
+    <div class="success-icon-box">
+      <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
+    <h1>To'lov qabul qilindi!</h1>
+    <p>Xaridingiz uchun katta rahmat, yana kutib qolamiz!</p>
+  </div>
+
+  <script>
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('liveClock').textContent = now.toLocaleTimeString('uz-UZ');
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    function formatNumber(num) {
+      return new Intl.NumberFormat('uz-UZ').format(Math.round(num || 0));
+    }
+
+    const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('scanpos_customer_display') : null;
+
+    function renderDisplayState(state) {
+      if (!state) return;
+      if (state.shopName) {
+        document.getElementById('displayShopName').textContent = state.shopName;
+      }
+
+      const cart = state.cart || [];
+      const idleView = document.getElementById('idleView');
+      const cartView = document.getElementById('cartView');
+      const tbody = document.getElementById('cartTableBody');
+
+      if (cart.length === 0) {
+        idleView.style.display = 'flex';
+        cartView.style.display = 'none';
+        document.getElementById('displayItemCount').textContent = '0 ta mahsulot';
+        document.getElementById('displayGrandTotal').textContent = "0 so'm";
+        document.getElementById('displaySubtotal').textContent = "0 so'm";
+        document.getElementById('displayDiscountRow').style.display = 'none';
+        document.getElementById('displayBonusRow').style.display = 'none';
+        document.getElementById('displayEarnedBonusRow').style.display = 'none';
+        document.getElementById('customerBadge').style.display = 'none';
+        return;
+      }
+
+      idleView.style.display = 'none';
+      cartView.style.display = 'flex';
+      document.getElementById('displayItemCount').textContent = cart.length + ' ta mahsulot';
+
+      tbody.innerHTML = cart.map((item, idx) => `
+        <tr class="${idx === cart.length - 1 ? 'new-item' : ''}">
+          <td style="color:var(--text3);font-size:0.8rem;">${idx + 1}</td>
+          <td class="td-name">${escapeHtml(item.name || '')}</td>
+          <td class="td-qty">${item.qty} ${escapeHtml(item.unit || 'ta')}</td>
+          <td class="td-price">${formatNumber(item.price)}</td>
+          <td class="td-total">${formatNumber((item.price || 0) * (item.qty || 1))} so'm</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('displayGrandTotal').textContent = formatNumber(state.total || 0) + " so'm";
+      document.getElementById('displaySubtotal').textContent = formatNumber(state.subtotal || 0) + " so'm";
+
+      const discRow = document.getElementById('displayDiscountRow');
+      if (state.discount > 0) {
+        discRow.style.display = 'flex';
+        document.getElementById('displayDiscount').textContent = '-' + formatNumber(state.discount) + " so'm";
+      } else {
+        discRow.style.display = 'none';
+      }
+
+      const bonusRow = document.getElementById('displayBonusRow');
+      if (state.bonusUsed > 0) {
+        bonusRow.style.display = 'flex';
+        document.getElementById('displayBonus').textContent = '-' + formatNumber(state.bonusUsed) + " so'm";
+      } else {
+        bonusRow.style.display = 'none';
+      }
+
+      const earnedRow = document.getElementById('displayEarnedBonusRow');
+      if (state.bonusEarned > 0) {
+        earnedRow.style.display = 'flex';
+        document.getElementById('displayEarnedBonus').textContent = '+' + formatNumber(state.bonusEarned) + " so'm";
+      } else {
+        earnedRow.style.display = 'none';
+      }
+
+      const custBadge = document.getElementById('customerBadge');
+      if (state.customer) {
+        custBadge.style.display = 'flex';
+        document.getElementById('customerName').textContent = state.customer.name;
+        document.getElementById('customerLoyaltyInfo').textContent = (state.customer.discountPercent || 0) + "% chegirma · " + formatNumber(state.customer.cashbackBalance || 0) + " so'm bonus";
+      } else {
+        custBadge.style.display = 'none';
+      }
+
+      // Update payment QR with exact total amount
+      if (state.total > 0) {
+        const qrData = encodeURIComponent(`scanpos://pay?amount=${state.total}&shop=${encodeURIComponent(state.shopName || 'ScanPOS')}`);
+        document.getElementById('qrImage').src = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${qrData}`;
+      }
+    }
+
+    function showCelebration() {
+      const el = document.getElementById('successCelebration');
+      el.style.display = 'flex';
+      setTimeout(() => {
+        el.style.display = 'none';
+        renderDisplayState({ cart: [] });
+      }, 4500);
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    if (channel) {
+      channel.onmessage = (e) => {
+        const { type, payload } = e.data || {};
+        if (type === 'SYNC_STATE') {
+          renderDisplayState(payload);
+        } else if (type === 'SALE_COMPLETED') {
+          showCelebration();
+        }
+      };
+      channel.postMessage({ type: 'REQUEST_STATE' });
+    }
+
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'scanpos_customer_display_payload' && e.newValue) {
+        try {
+          const data = JSON.parse(e.newValue);
+          if (data.type === 'SALE_COMPLETED') showCelebration();
+          else if (data.type === 'SYNC_STATE') renderDisplayState(data.payload);
+        } catch (err) {}
+      }
+    });
+
+    // Initial check from localStorage
+    try {
+      const init = localStorage.getItem('scanpos_customer_display_payload');
+      if (init) {
+        const parsed = JSON.parse(init);
+        if (parsed.payload) renderDisplayState(parsed.payload);
+      }
+    } catch (e) {}
+  </script>
+</body>
+</html>

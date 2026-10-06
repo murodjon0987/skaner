@@ -962,6 +962,308 @@ async function runTests() {
   assert(refundMeat.stock === 10.5, 'Ombordagi qoldiq 10 dan 0.5 ga ko\'payib 10.5 kg bo\'ldi');
 
   // ─────────────────────────────────────────────
+  // TEST 29: Kassa Smenalari (Shift Lifecycle) va X/Z hisobotlar
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 29: Kassa Smenalari (Shift Lifecycle) va X/Z hisobotlar');
+  window.APP.currentShift = null;
+  window.APP.shifts = [];
+
+  const shiftCashierNameInput = document.getElementById('shiftCashierName');
+  const shiftStartingCashInput = document.getElementById('shiftStartingCash');
+  const shiftOpenNoteInput = document.getElementById('shiftOpenNote');
+  if (shiftCashierNameInput) shiftCashierNameInput.value = 'Murodjon Kassir';
+  if (shiftStartingCashInput) shiftStartingCashInput.value = '200000';
+  if (shiftOpenNoteInput) shiftOpenNoteInput.value = 'Ertalabki smena';
+
+  await window.submitOpenShift();
+  assert(window.APP.currentShift !== null, 'Smena muvaffaqiyatli ochildi');
+  assert(window.APP.currentShift.cashierName === 'Murodjon Kassir', 'Kassir ismi to\'g\'ri saqlandi');
+  assert(window.APP.currentShift.startingCash === 200000, 'Boshlang\'ich naqd pul 200 000 so\'m');
+  assert(window.APP.currentShift.status === 'open', 'Smena holati ochiq');
+
+  // Pul harakati: Chiqim 50 000 so'm
+  window.APP._cmType = 'out';
+  const cmAmtInput = document.getElementById('cashMovementAmt');
+  const cmRsnInput = document.getElementById('cashMovementReason');
+  if (cmAmtInput) cmAmtInput.value = '50000';
+  if (cmRsnInput) cmRsnInput.value = 'Tushlik uchun';
+  await window.submitCashMovement();
+
+  // Pul harakati: Kirim 100 000 so'm
+  window.APP._cmType = 'in';
+  if (cmAmtInput) cmAmtInput.value = '100000';
+  if (cmRsnInput) cmRsnInput.value = 'Mayda pul kiritish';
+  await window.submitCashMovement();
+
+  // 200 000 - 50 000 + 100 000 = 250 000 so'm
+  const curDrawerCash = window.calcCurrentShiftCash(window.APP.currentShift);
+  assert(curDrawerCash === 250000, 'Kassadagi naqd pul (200k - 50k + 100k = 250 000) to\'g\'ri hisoblandi');
+
+  // Savdo o'tkazish (Naqd 60 000 so'm)
+  const shiftTestProd = {
+    id: 'prod-shift-sale',
+    name: 'Shakar 1kg',
+    price: 15000,
+    costPrice: 12000,
+    stock: 20,
+    trackStock: true
+  };
+  window.APP.products.push(shiftTestProd);
+  window.APP.cart = [{ ...shiftTestProd, qty: 4 }]; // 4 * 15000 = 60000
+  window.APP.selectedPayment = 'cash';
+  const cashGivenEl = document.getElementById('cashGiven');
+  if (cashGivenEl) cashGivenEl.value = '60000';
+  await window.completeSale();
+
+  assert(window.APP.currentShift.cashSales === 60000, 'Smenadagi naqd savdo 60 000 so\'m');
+  assert(window.APP.currentShift.billsCount === 1, 'Smenada 1 ta chek qayd etildi');
+  // Kassada: 250 000 + 60 000 = 310 000 so'm
+  assert(window.calcCurrentShiftCash(window.APP.currentShift) === 310000, 'Sotuvdan so\'ng kassadagi kutilgan naqd 310 000 so\'m');
+
+  // Oraliq X-hisobot
+  const xReportText = window.buildShiftReportText(window.APP.currentShift, false);
+  assert(xReportText.includes('ORALIQ X-HISOBOT'), 'X-hisobot sarlavhasi to\'g\'ri generatsiya qilindi');
+  assert(xReportText.includes('310') && xReportText.includes('KUTILGAN NAQD PUL'), 'X-hisobotda kutilayotgan kassa naqd puli mavjud');
+
+  // Smenani yopish (Faktik pul 300 000 so'm, ya'ni -10 000 kamomad)
+  const actCashInput = document.getElementById('shiftActualCash');
+  if (actCashInput) actCashInput.value = '300000';
+  window.calcShiftDiscrepancy();
+  const diffBox = document.getElementById('shiftDiffBox');
+  assert(diffBox && diffBox.textContent.includes('Kamomad'), 'Discrepancy kamomad sifatida aniqlandi');
+
+  await window.submitCloseShift();
+  assert(window.APP.currentShift === null, 'Smena yopilgach APP.currentShift null bo\'ldi');
+  assert(window.APP.shifts.length === 1, 'Yopilgan smena APP.shifts tarixiga saqlandi');
+  const closedShift = window.APP.shifts[0];
+  assert(closedShift.status === 'closed', 'Smena holati closed');
+  assert(closedShift.discrepancy === -10000, 'Kamomad -10 000 so\'m to\'g\'ri qayd etildi');
+
+  // Yakuniy Z-hisobot
+  const zReportText = window.buildShiftReportText(closedShift, true);
+  assert(zReportText.includes('YAKUNIY Z-HISOBOT'), 'Z-hisobot sarlavhasi to\'g\'ri generatsiya qilindi');
+  assert(zReportText.includes('HAQIQIY SANALGAN NAQD'), 'Z-hisobotda faktik sanalgan naqd pul ko\'rsatildi');
+
+  // ─────────────────────────────────────────────
+  // TEST 30: Mijozlar sodiqlik tizimi (Loyalty & Bonuses)
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 30: Mijozlar sodiqlik tizimi (Loyalty & Bonuses)');
+  const loyalCustomer = {
+    id: 'cust-loyalty-101',
+    name: 'Alisher Sodiq',
+    phone: '+998901234567',
+    discountPercent: 5, // 5% doimiy shaxsiy chegirma
+    cashbackBalance: 20000, // 20 000 so'm yig'ilgan bonus
+    totalPurchases: 500000,
+    purchasesCount: 5,
+    createdAt: new Date().toISOString()
+  };
+  window.APP.debtors.unshift(loyalCustomer);
+
+  // Mijozni savatga tanlash
+  window.selectCustomer(loyalCustomer.id);
+  assert(window.APP.selectedCustomer !== null && window.APP.selectedCustomer.id === loyalCustomer.id, 'Sodiq mijoz savatga tanlandi');
+
+  // Savatga tovar qo'shish (100 000 so'm)
+  const loyaltyProd = {
+    id: 'prod-loyalty-item',
+    name: 'Choynak To\'plami',
+    price: 100000,
+    costPrice: 70000,
+    stock: 10,
+    trackStock: true
+  };
+  window.APP.products.push(loyaltyProd);
+  window.APP.cart = [{ ...loyaltyProd, qty: 1 }];
+
+  // 5% shaxsiy chegirma tekshiruvi: 100 000 - 5% = 95 000 so'm
+  const totalsWithDisc = window.calcTotals(window.APP.cart, loyalCustomer.discountPercent, 0, 0);
+  assert(totalsWithDisc.discount === 5000, 'Mijozning 5% chegirmasi (5 000 so\'m) to\'g\'ri hisoblandi');
+  assert(totalsWithDisc.total === 95000, 'Chegirmadan keyingi summa 95 000 so\'m');
+
+  // Bonusdan to'lash (20 000 so'm bonus sarflash)
+  const useBonusToggle = document.getElementById('useBonusToggle');
+  if (useBonusToggle) useBonusToggle.checked = true;
+  window.toggleUseBonus();
+  assert(window.APP._bonusUsedAmt === 20000, 'Bonusdan 20 000 so\'m to\'lov uchun ajratildi');
+  const totalsWithBonus = window.calcTotals(window.APP.cart, loyalCustomer.discountPercent, 0, 20000);
+  assert(totalsWithBonus.total === 75000, 'Bonus ayirilgach yakuniy to\'lov 75 000 so\'m bo\'ldi');
+
+  // Savdoni yakunlash va yangi keshbek hisoblanishi (sozlamada 2%)
+  window.APP.settings.cashbackEnabled = true;
+  window.APP.settings.cashbackRate = 2; // 2% keshbek
+  window.APP.selectedPayment = 'cash';
+  const cashInputEl = document.getElementById('cashGiven');
+  if (cashInputEl) cashInputEl.value = '75000';
+  await window.completeSale();
+
+  // 75 000 * 2% = 1 500 so'm yangi bonus yig'iladi
+  // Eski bonus 20 000 sarflandi (0 qoldi), yangi 1 500 qo'shildi -> 1 500 so'm
+  assert(loyalCustomer.cashbackBalance === 1500, 'Bonus sarflanib, yangi keshbek (+1 500) to\'g\'ri hisoblandi');
+  assert(loyalCustomer.totalPurchases === 575000, 'Mijozning jami xaridlari summasi yangilandi (500k + 75k = 575 000)');
+  assert(loyalCustomer.purchasesCount === 6, 'Mijoz xaridlari soni 6 taga oshdi');
+
+  // Chekda sodiqlik ma'lumotlari saqlanganligi
+  const loyalLastBill = window.APP.bills[0];
+  assert(loyalLastBill.customerId === loyalCustomer.id, 'Chekda customerId qayd etildi');
+  assert(loyalLastBill.bonusUsed === 20000, 'Chekda bonusUsed: 20 000 so\'m qayd etildi');
+  assert(loyalLastBill.bonusEarned === 1500, 'Chekda bonusEarned: 1 500 so\'m qayd etildi');
+
+  // Sodiqlik oynasida bonus / chegirma tahrirlash (saveAdjustBonus)
+  const adjIdInput = document.getElementById('adjustBonusCustomerId');
+  const adjDiscInput = document.getElementById('adjustDiscountPct');
+  const adjBonInput = document.getElementById('adjustCashbackBal');
+  if (adjIdInput) adjIdInput.value = loyalCustomer.id;
+  if (adjDiscInput) adjDiscInput.value = '10'; // 10%
+  if (adjBonInput) adjBonInput.value = '50000'; // 50 000 so'm
+  await window.saveAdjustBonus();
+
+  assert(loyalCustomer.discountPercent === 10, 'Mijoz chegirmasi 10% ga muvaffaqiyatli o\'zgartirildi');
+  assert(loyalCustomer.cashbackBalance === 50000, 'Mijoz bonusi 50 000 so\'mga muvaffaqiyatli o\'zgartirildi');
+
+  // ─────────────────────────────────────────────
+  // TEST 31: Smart Dinamik Narxlar (Smart Pricing)
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 31: Smart Dinamik Narxlar (Smart Pricing)');
+  // 31.1: Happy Hours (masalan 20% chegirma)
+  window.APP.settings.happyHoursEnabled = true;
+  window.APP.settings.happyHoursStart = '00:00';
+  window.APP.settings.happyHoursEnd = '23:59';
+  window.APP.settings.happyHoursDiscount = 20;
+
+  const testItemSmart = { id: 'p_smart_1', name: 'Meva Sharbat', price: 10000, qty: 1 };
+  const hhInfo = window.getSmartPriceInfo(testItemSmart, 1);
+  assert(hhInfo.rule === 'happy-hour', 'Happy Hour qoidasi faollashdi');
+  assert(hhInfo.finalPrice === 8000, '20% Happy hour chegirmasi: 10 000 -> 8 000 so\'m');
+  assert(hhInfo.discountPercent === 20, 'Chegirma foizi 20%');
+
+  // Happy hourni o'chirib, Expiry Markdown tekshiramiz
+  window.APP.settings.happyHoursEnabled = false;
+  window.APP.settings.expiryMarkdownEnabled = true;
+  const tomorrow = new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const testExpItem = { id: 'p_smart_exp', name: 'Yogurt', price: 10000, expiryDate: tomorrow };
+  const expMarkdownInfo = window.getSmartPriceInfo(testExpItem, 1);
+  assert(expMarkdownInfo.rule === 'expiry-markdown', 'Muddati yaqin tovar uchun Expiry Markdown faollashdi');
+  assert(expMarkdownInfo.finalPrice === 7000, '30% avtomatik sariq narxnoma: 10 000 -> 7 000 so\'m');
+
+  // Wholesale Tier (10+ dona xaridda 10% ulgurji narx)
+  window.APP.settings.expiryMarkdownEnabled = false;
+  window.APP.settings.wholesaleTierEnabled = true;
+  const testWholesaleItem = { id: 'p_smart_ws', name: 'Suv 1.5L', price: 5000 };
+  const wsInfo = window.getSmartPriceInfo(testWholesaleItem, 12);
+  assert(wsInfo.rule === 'wholesale-tier', '12 dona xarid uchun Ulgurji narx faollashdi');
+  assert(wsInfo.finalPrice === 4500, '10% ulgurji chegirma: 5 000 -> 4 500 so\'m');
+
+  // Savat va calcTotals hisobi
+  window.APP.cart = [
+    { id: 'p_smart_ws', name: 'Suv 1.5L', price: 5000, qty: 10 }
+  ];
+  window.updateCartUI();
+  assert(window.APP.cart[0].smartPrice === 4500, 'Savatda smartPrice 4500 so\'m sifatida saqlandi');
+  const totalsSmart = window.calcTotals(window.APP.cart, 0, 0, 0);
+  assert(totalsSmart.subtotal === 45000, 'Subtotal 10 * 4500 = 45 000 so\'m bo\'ldi (50 000 emas)');
+
+  // ─────────────────────────────────────────────
+  // TEST 32: Ikkinchi Ekran — Mijoz Monitori (Customer Display Sync)
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 32: Ikkinchi Ekran — Mijoz Monitori Sync');
+  window.APP.settings.shopName = 'ScanPOS Test Supermarket';
+  window.syncCustomerDisplay('SYNC_STATE');
+  const rawPayload = window.localStorage.getItem('scanpos_customer_display_payload');
+  assert(rawPayload !== null, 'LocalStorage ga display payload saqlandi');
+  const parsedDisplay = JSON.parse(rawPayload);
+  assert(parsedDisplay.type === 'SYNC_STATE', 'Tadbir turi SYNC_STATE');
+  assert(parsedDisplay.payload.shopName === 'ScanPOS Test Supermarket', 'Do\'kon nomi to\'g\'ri uzatildi');
+  assert(parsedDisplay.payload.total === 45000, 'Mijoz ekraniga to\'lov summasi (45 000) to\'g\'ri uzatildi');
+  assert(parsedDisplay.payload.cart.length === 1, 'Mijoz ekraniga savat tovarlari to\'g\'ri uzatildi');
+
+  // To'lov tugaganda SALE_COMPLETED tadbiri
+  window.syncCustomerDisplay('SALE_COMPLETED', { billId: 'BILL-123' });
+  const rawSalePayload = window.localStorage.getItem('scanpos_customer_display_payload');
+  const parsedSale = JSON.parse(rawSalePayload);
+  assert(parsedSale.type === 'SALE_COMPLETED', 'To\'lov tugaganda SALE_COMPLETED xabari uzatildi');
+
+  // ─────────────────────────────────────────────
+  // TEST 33: AI Vision Skaner (Visual Goods Matcher)
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 33: AI Vision Skaner (Visual Goods Matcher)');
+  const visionProd1 = { id: 'v_bodring', name: 'Bodring Yangi', price: 8000, unit: 'kg', category: 'sabzavot' };
+  const visionProd2 = { id: 'v_pomidor', name: 'Pomidor Qizil', price: 15000, unit: 'kg', category: 'sabzavot' };
+  const visionProd3 = { id: 'v_non', name: 'Samarqand Noni', price: 6000, unit: 'dona', category: 'non' };
+  window.APP.products.push(visionProd1, visionProd2, visionProd3);
+
+  // Yashil piksel profili (Bodringni tanishi kerak)
+  const greenProfile = { avgR: 50, avgG: 190, avgB: 60 };
+  const greenMatches = window.findVisionMatches(greenProfile);
+  assert(greenMatches.length > 0, 'Yashil rang profili bo\'yicha tovarlar topildi');
+  assert(greenMatches[0].product.name.includes('Bodring'), 'Eng yuqori aniqlikdagi tovar: Bodring');
+  assert(greenMatches[0].score >= 80, 'AI Ishonch darajasi 80% dan yuqori');
+
+  // Qizil piksel profili (Pomidor yoki Go'shtni tanishi kerak)
+  const redProfile = { avgR: 210, avgG: 40, avgB: 40 };
+  const redMatches = window.findVisionMatches(redProfile);
+  assert(redMatches.length > 0, 'Qizil rang profili bo\'yicha tovarlar topildi');
+  assert(redMatches.some(m => m.product.name.includes('Pomidor')), 'Qizil tovarlar orasida Pomidor topildi');
+
+  // AI Vision orqali 1-click bilan savatga qo'shish
+  window.APP.cart = [];
+  window.addVisionItemToCart(visionProd1.id, 1.5);
+  assert(window.APP.cart.length === 1, 'AI Vision dan tanlangan tovar savatga qo\'shildi');
+  assert(window.APP.cart[0].qty === 1.5, 'Miqdor 1.5 kg sifatida kiritildi');
+  assert(window.APP.cart[0].name === 'Bodring Yangi', 'Mahsulot nomi to\'g\'ri');
+
+  // ─────────────────────────────────────────────
+  // TEST 34: AI CFO Biznes Maslahatchi & Demand Forecasting
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 34: AI CFO Biznes Maslahatchi');
+  const deadProd = {
+    id: 'prod_dead_stock',
+    name: 'Qimmat Shokolad Qutisi',
+    price: 100000,
+    costPrice: 70000,
+    stock: 10,
+    trackStock: true
+  };
+  window.APP.products.push(deadProd);
+
+  const gridEl = document.getElementById('aiCfoInsightsGrid');
+  assert(gridEl !== null, 'HTML da #aiCfoInsightsGrid mavjud');
+
+  window.runAICFOAnalysis();
+  assert(gridEl.innerHTML.includes('Dead Stock'), 'AI CFO gridda Dead Stock tahlili hosil bo\'ldi');
+  assert(gridEl.innerHTML.includes('Muzlagan kapital'), 'Muzlagan kapital kartasi mavjud');
+  assert(gridEl.innerHTML.includes('Talab prognozi'), 'Talab prognozi kartasi mavjud');
+  assert(gridEl.innerHTML.includes('Marja optimallashtirish'), 'Marja optimallashtirish kartasi mavjud');
+
+  // ─────────────────────────────────────────────
+  // TEST 35: Telegram Mini App Onlayn Do'kon & Buyurtmalar
+  // ─────────────────────────────────────────────
+  console.log('\n📌 Test 35: Telegram Mini App Onlayn Buyurtmalar');
+  window.APP.onlineOrders = [];
+  await window.simulateOnlineOrder();
+  assert(window.APP.onlineOrders.length === 1, 'Yangi onlayn buyurtma qabul qilindi');
+  const simOrder = window.APP.onlineOrders[0];
+  assert(simOrder.status === 'new', 'Buyurtma holati yangi (new)');
+  assert(simOrder.customerName === 'Sardor Rahimiy', 'Mijoz ismi qayd etildi');
+  assert(simOrder.items.length > 0, 'Buyurtma tovarlari mavjud');
+
+  const badgeEl = document.getElementById('onlineOrdersBadge');
+  assert(badgeEl && badgeEl.textContent === '1', 'Headerdagi bildirishnoma belgisi 1 ga o\'zgardi');
+
+  // Buyurtmani qabul qilish (acceptOnlineOrder)
+  await window.acceptOnlineOrder(simOrder.id);
+  assert(simOrder.status === 'accepted', 'Buyurtma holati "accepted" ga o\'tdi');
+
+  // Buyurtmani to'g'ridan-to'g'ri kassaga yuklash (loadOrderToCartAndCheckout)
+  window.loadOrderToCartAndCheckout(simOrder.id);
+  assert(window.APP.cart.length > 0, 'Onlayn buyurtma tovarlari kassa savatiga yuklandi');
+  assert(window.APP.currentPage === 'scanner', 'Kassa skaner sahifasiga o\'tildi');
+
+  // Buyurtmani yakunlash (completeOnlineOrder)
+  await window.completeOnlineOrder(simOrder.id);
+  assert(simOrder.status === 'completed', 'Buyurtma muvaffaqiyatli yakunlandi (completed)');
+
+  // ─────────────────────────────────────────────
   // XULOSA
   // ─────────────────────────────────────────────
   console.log(`\n══════════════════════════════════════`);

@@ -1,0 +1,76 @@
+# ============================================================
+# .opencodeignore — OpenCode / DeepSeek token sarfini kamaytirish
+# Bu fayldagi naqshlar OpenCode kontekstiga qo'shilmaydi.
+# ============================================================
+
+# 1. Ishga tushirish va bog'liqlik papkalari
+node_modules/
+dist/
+build/
+.cache/
+.DS_Store
+
+# 2. Katta hajmli lock-fayllar
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# 3. Firebase va maxfiy kalitlar/loglar
+.firebase/
+*.log
+*-service-account*.json
+serviceAccountKey*.json
+
+# 4. Media va arxiv fayllar
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.gif
+*.ico
+*.webp
+*.mp4
+*.mov
+*.zip
+*.tar
+*.tar.gz
+*.gz
+*.7z
+
+# 5. Test / coverage natijalari
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# 6. Maxfiy muhit va kalitlar
+.env
+.env.*
+*.pem
+*.key
+*.p12
+
+# 7. IDE / muharrir sozlamalari
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+
+# 8. OS va vaqtinchalik fayllar
+Thumbs.db
+Desktop.ini
+*.tmp
+*.temp
+temp/
+tmp/
+
+# 9. Deploy va keshlar
+.vercel/
+.netlify/
+.eslintcache
+.stylelintcache
+npm-debug.log*
+yarn-error.log*

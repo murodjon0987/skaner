@@ -1,15 +1,75 @@
+# Dependencies / runtime
 node_modules/
+functions/node_modules/
+dist/
+build/
+.cache/
 .DS_Store
 
-# Firebase
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Firebase va maxfiy kalitlar / loglar
 .firebase/
+*.log
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
-functions/node_modules/
 *-service-account*.json
 serviceAccountKey*.json
 
-# Build / cache
-dist/
-.cache/
+# Media va arxiv fayllar
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.gif
+*.ico
+*.webp
+*.mp4
+*.mov
+*.zip
+*.tar
+*.tar.gz
+*.gz
+*.7z
+
+# Test / coverage natijalari
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# Maxfiy muhit va kalitlar
+.env
+.env.*
+*.pem
+*.key
+*.p12
+
+# IDE / muharrir sozlamalari
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+
+# OS va vaqtinchalik fayllar
+Thumbs.db
+Desktop.ini
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Deploy va keshlar
+.vercel/
+.netlify/
+.eslintcache
+.stylelintcache
+npm-debug.log*
+yarn-error.log*

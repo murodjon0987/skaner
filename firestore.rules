@@ -90,6 +90,8 @@ service cloud.firestore {
       match /supplies/{docId} { allow read, write: if ownerOrAdmin(userId); }
       match /quickItems/{docId} { allow read, write: if ownerOrAdmin(userId); }
       match /heldCarts/{docId} { allow read, write: if ownerOrAdmin(userId); }
+      match /shifts/{docId} { allow read, write: if ownerOrAdmin(userId); }
+      match /onlineOrders/{docId} { allow read, write: if ownerOrAdmin(userId); }
       match /meta/{docId} { allow read, write: if ownerOrAdmin(userId); }
 
       // Xabarnomalar: user o'qiydi va "read" ni belgilaydi; yaratish faqat admin

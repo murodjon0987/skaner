@@ -105,6 +105,8 @@
       deferredInstallPrompt = e;
       const btn = document.getElementById('btnInstallApp');
       if (btn) btn.classList.remove('hidden');
+      const container = document.getElementById('pwaInstallContainer');
+      if (container) container.classList.remove('hidden');
     });
 
     window.installPWA = async function () {
@@ -114,6 +116,8 @@
       if (choice.outcome === 'accepted') {
         const btn = document.getElementById('btnInstallApp');
         if (btn) btn.classList.add('hidden');
+        const container = document.getElementById('pwaInstallContainer');
+        if (container) container.classList.add('hidden');
       }
       deferredInstallPrompt = null;
     };
@@ -244,6 +248,17 @@
             <button type="button" class="user-menu-item danger" onclick="handleSignOut()">Chiqish</button>
           </div>
         </div>
+        <button class="nav-btn" onclick="openCustomerDisplay()" title="Mijoz ekrani (2-Monitor)" id="btnCustDisplayNav" style="position:relative;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+        </button>
+        <button class="nav-btn" onclick="openOnlineOrdersModal()" title="Telegram Onlayn Buyurtmalar" id="btnOnlineOrdersNav" style="position:relative;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/>
+          </svg>
+          <span class="online-orders-badge hidden" id="onlineOrdersBadge">0</span>
+        </button>
         <button class="nav-btn" onclick="showPage('settings')" title="Sozlamalar">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
@@ -264,6 +279,28 @@
 
       <!-- PAGE: SCANNER -->
       <div id="page-scanner" class="page active">
+        <!-- KASSA SMENASI PANELI -->
+        <div class="shift-bar" id="shiftBar">
+          <div class="shift-bar-left">
+            <span class="shift-status-dot closed" id="shiftStatusDot"></span>
+            <div class="shift-info-wrap">
+              <div class="shift-title" id="shiftBarTitle">Kassa smenasi yopiq</div>
+              <div class="shift-subtitle" id="shiftBarSub">Savdoni boshlash uchun smena oching</div>
+            </div>
+          </div>
+          <div class="shift-bar-actions" id="shiftBarActions">
+            <button type="button" class="btn-shift-action btn-shift-open" id="btnOpenShift" onclick="openShiftModal()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Smena ochish
+            </button>
+            <div class="shift-active-btns hidden" id="shiftActiveBtns">
+              <button type="button" class="btn-shift-sub" onclick="openCashMovementModal()" title="Kassaga kirim / chiqim">Kassa ±</button>
+              <button type="button" class="btn-shift-sub" onclick="viewXReport()" title="Oraliq X-hisobot">X-hisobot</button>
+              <button type="button" class="btn-shift-action btn-shift-close" onclick="openCloseShiftModal()" title="Smenani yopish va Z-hisobot">Yopish (Z)</button>
+            </div>
+          </div>
+        </div>
+
         <div class="scanner-section">
           <div class="scanner-wrapper" id="scannerWrapper">
             <video id="cameraFeed" autoplay playsinline muted></video>
@@ -289,6 +326,12 @@
               <button class="btn-primary" onclick="startCamera()">Kamerani Yoqish</button>
             </div>
             <div class="scan-flash" id="scanFlash"></div>
+            <button class="ai-vision-btn" id="aiVisionBtn" onclick="openAIVisionModal()" title="AI Vision: Kameradan tovarni aniqlash">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
+              </svg>
+              <span>AI Vision</span>
+            </button>
             <button class="torch-btn" id="torchBtn" onclick="toggleTorch()" title="Fonar (Chiroq)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
@@ -385,6 +428,29 @@
               </button>
             </div>
           </div>
+
+          <!-- SODIQLIK / MIJOZ TANLASH PANELI -->
+          <div class="cart-customer-bar" id="cartCustomerBar">
+            <div class="customer-picker-wrap" id="customerPickerWrap">
+              <button type="button" class="btn-pick-customer" onclick="openSelectCustomerModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                </svg>
+                <span>Mijoz tanlash (Doimiy chegirma & Bonus)</span>
+              </button>
+            </div>
+            <div class="selected-customer-pill hidden" id="selectedCustomerPill">
+              <div class="sc-avatar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <div class="sc-info">
+                <div class="sc-name" id="scName">Mijoz</div>
+                <div class="sc-badge" id="scBadge">0% chegirma · 0 so'm bonus</div>
+              </div>
+              <button type="button" class="sc-remove-btn" onclick="clearSelectedCustomer()" title="Mijozni bekor qilish">×</button>
+            </div>
+          </div>
+
           <div class="empty-cart" id="emptyCart">
             <div class="empty-cart-icon">
               <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
@@ -403,6 +469,9 @@
               <div class="total-row"><span>Oraliq summa:</span><span id="subtotalAmt">0 so'm</span></div>
               <div class="total-row discount-row" id="discountRow" style="display:none;">
                 <span>Chegirma:</span><span id="discountAmt" class="discount-text">-0 so'm</span>
+              </div>
+              <div class="total-row bonus-row" id="bonusRow" style="display:none;">
+                <span>Bonusdan to'lov:</span><span id="bonusAmt" class="bonus-text">-0 so'm</span>
               </div>
               <div class="total-row grand">
                 <span>JAMI:</span><span id="grandTotal" class="grand-total-text">0 so'm</span>
@@ -629,6 +698,23 @@
           </div>
         </div>
 
+        <!-- AI BIZNES MASLAHATCHI & BASHORATLASH (AI CFO) -->
+        <div class="ai-cfo-card" id="aiCfoCard">
+          <div class="ai-cfo-header">
+            <div class="ai-cfo-title-wrap">
+              <span class="ai-sparkle-pill">AI CFO</span>
+              <h3 style="font-size:1.05rem;font-weight:800;margin:0;">AI Biznes Maslahatchi & Bashoratlar</h3>
+            </div>
+            <button type="button" class="btn-ai-refresh" onclick="runAICFOAnalysis()" title="AI tahlilni yangilash">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              Qayta tahlil qilish
+            </button>
+          </div>
+          <div class="ai-cfo-grid" id="aiCfoInsightsGrid">
+            <!-- 4 Cards dynamically rendered by runAICFOAnalysis() -->
+          </div>
+        </div>
+
         <!-- Revenue chart -->
         <div class="an-chart-card">
           <div class="an-chart-title">
@@ -670,6 +756,18 @@
           <div class="an-chart-wrap">
             <canvas id="hourlyChart"></canvas>
           </div>
+        </div>
+
+        <!-- KASSA SMENALARI JURNALI (Z-HISOBOTLAR) -->
+        <div class="an-chart-card" style="margin-top:16px;">
+          <div class="an-chart-title" style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Kassa smenalari arxivi (Z-Hisobotlar)
+            </div>
+            <button type="button" class="btn-secondary btn-xs" onclick="viewCurrentShiftOrPrompt()" style="font-size:0.75rem;">Joriy smena</button>
+          </div>
+          <div id="shiftsHistoryList" class="shifts-history-list" style="margin-top:10px;"></div>
         </div>
       </div>
 
@@ -733,6 +831,14 @@
                   class="small-input" /><span class="unit">%</span></div>
             </div>
             <div class="settings-item toggle-item">
+              <div>
+                <label style="display:block;margin-bottom:2px;">Kam qoldiq chegarasi (soni)</label>
+                <span style="font-size:0.75rem;color:var(--text3);">Omborda qoldiq kam qolganda ogohlantirish</span>
+              </div>
+              <div class="toggle-right"><input type="number" id="lowStockLimit" placeholder="5" min="1" value="5"
+                  class="small-input" onchange="saveSettings()" /><span class="unit">dona</span></div>
+            </div>
+            <div class="settings-item toggle-item">
               <label>Chegirma imkoniyati</label>
               <label class="toggle-switch"><input type="checkbox" id="discountEnabled" onchange="saveSettings()" /><span
                   class="toggle-slider"></span></label>
@@ -760,54 +866,172 @@
               </button>
             </div>
           </div>
-          <div class="form-group">
-            <label>Kam qoldiq chegarasi (soni)</label>
-            <input type="number" id="lowStockLimit" placeholder="5" min="1" value="5" />
-          </div>
-          <button class="btn-primary btn-full"
-            onclick="saveSettings(); showToast('Sozlamalar saqlandi')">Saqlash</button>
-          
-          <div id="adminSettingsBlock" class="hidden">
-            <h3 class="settings-group-title">Boshqaruv</h3>
-            <div class="settings-group">
-              <button type="button" class="btn-secondary btn-full" onclick="openAdminPanel()">Admin panelni ochish</button>
+          <h3 class="settings-group-title">Mijozlar sodiqligi & Keshbek</h3>
+          <div class="settings-group">
+            <div class="settings-item toggle-item">
+              <div>
+                <label style="display:block;margin-bottom:2px;">Keshbek (Bonus) tizimi</label>
+                <span style="font-size:0.75rem;color:var(--text3);">Har bir xaridda mijozga bonus yig'iladi</span>
+              </div>
+              <label class="toggle-switch"><input type="checkbox" id="cashbackEnabled" checked onchange="saveSettings()" /><span
+                  class="toggle-slider"></span></label>
+            </div>
+            <div class="settings-item toggle-item">
+              <label>Keshbek foizi (%)</label>
+              <div class="toggle-right"><input type="number" id="cashbackRate" value="2" min="0.5" max="30" step="0.5"
+                  class="small-input" onchange="saveSettings()" /><span class="unit">%</span></div>
             </div>
           </div>
+          <h3 class="settings-group-title">Kassa smenalari</h3>
+          <div class="settings-group">
+            <div class="settings-item toggle-item">
+              <div>
+                <label style="display:block;margin-bottom:2px;">Kassa smenalarini yuritish</label>
+                <span style="font-size:0.75rem;color:var(--text3);">Kassa ochish, yopish va Z-hisobot hisobi</span>
+              </div>
+              <label class="toggle-switch"><input type="checkbox" id="shiftsEnabled" checked onchange="saveSettings(); if (typeof updateShiftBarUI === 'function') updateShiftBarUI();" /><span
+                  class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <h3 class="settings-group-title">Smart Dinamik Narxlar (Smart Pricing)</h3>
+          <div class="settings-group">
+            <div class="settings-item toggle-item">
+              <div>
+                <label style="display:block;margin-bottom:2px;">Kechki "Happy Hours" chegirmasi</label>
+                <span style="font-size:0.75rem;color:var(--text3);">Belgilangan vaqtda (masalan 20:00-23:00) avtomatik chegirma</span>
+              </div>
+              <label class="toggle-switch"><input type="checkbox" id="happyHoursEnabled" checked onchange="saveSettings()" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="settings-item toggle-item" style="gap:10px;">
+              <label>Vaqt oraliqlari & Foiz</label>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <input type="time" id="happyHoursStart" value="20:00" class="small-input" style="width:80px;" onchange="saveSettings()" />
+                <span style="color:var(--text3);">-</span>
+                <input type="time" id="happyHoursEnd" value="23:00" class="small-input" style="width:80px;" onchange="saveSettings()" />
+                <input type="number" id="happyHoursDiscount" value="20" min="1" max="80" class="small-input" style="width:50px;" onchange="saveSettings()" /><span class="unit">%</span>
+              </div>
+            </div>
+            <div class="settings-item toggle-item">
+              <div>
+                <label style="display:block;margin-bottom:2px;">Muddati kam tovarlarga avto-chegirma</label>
+                <span style="font-size:0.75rem;color:var(--text3);">Yaroqlilik muddati 3 kun qolganda avtomatik 25% chegirma</span>
+              </div>
+              <label class="toggle-switch"><input type="checkbox" id="expiryMarkdownEnabled" checked onchange="saveSettings()" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="settings-item toggle-item">
+              <div>
+                <label style="display:block;margin-bottom:2px;">Ulgurji hajm chegirmasi (Wholesale Tier)</label>
+                <span style="font-size:0.75rem;color:var(--text3);">5 tadan ko'p olinganda avtomatik 10% ulgurji narx</span>
+              </div>
+              <label class="toggle-switch"><input type="checkbox" id="wholesaleTierEnabled" checked onchange="saveSettings()" /><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+
+          <h3 class="settings-group-title">Telegram Mini App & 2-Ekran</h3>
+          <div class="settings-group" style="padding:14px;display:flex;flex-direction:column;gap:10px;">
+            <button type="button" class="btn-secondary btn-full" onclick="openTelegramStoreModal()" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 16px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.05 2.3L2.7 9.4c-1.25.5-1.24 1.2-.22 1.5l4.7 1.47 1.8 5.5c.22.6.4.84 1.1.84.54 0 .78-.25 1.08-.54l2.6-2.53 4.7 3.47c.86.48 1.48.23 1.7-.8l3.08-14.5c.31-1.26-.48-1.83-1.3-1.49zM9.5 13.2L17 8.3c.34-.2.65-.09.4.14l-6.2 5.6-.24 2.6-1.46-3.44z"/></svg>
+              Telegram Mini App do'kon havolasi va QR-kodi
+            </button>
+            <button type="button" class="btn-secondary btn-full" onclick="openCustomerDisplay()" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 16px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              Mijoz ekrani (2-Monitor)ni ochish
+            </button>
+          </div>
+
+          <h3 class="settings-group-title">Qurilmalar va Chop etish</h3>
+          <div class="settings-group">
+            <div class="hardware-card">
+              <div class="hardware-card-header">
+                <div class="hardware-card-info">
+                  <div class="hardware-card-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div class="hardware-card-title">Termal chek printeri</div>
+                    <div class="hardware-card-sub">
+                      <span>Bluetooth ESC/POS</span>
+                      <span>·</span>
+                      <span>58mm / 80mm</span>
+                    </div>
+                  </div>
+                </div>
+                <span id="thermalPrinterBadge" class="hardware-status-badge offline">
+                  <span id="thermalPrinterDot" class="hardware-status-dot"></span>
+                  <span id="thermalPrinterStatus">Ulanmagan</span>
+                </span>
+              </div>
+
+              <div class="hardware-card-desc">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:2px;color:var(--text3);"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>Simsiz Bluetooth orqali 58mm va 80mm ESC/POS kassa chek printerlariga bevosita chek chiqarish imkoniyati.</span>
+              </div>
+
+              <div class="hardware-card-actions">
+                <button type="button" id="btnConnectThermal" class="btn-primary" onclick="connectThermalPrinter()" style="flex:1;min-width:180px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+                  </svg>
+                  <span>Termal printer ulash (Bluetooth)</span>
+                </button>
+                <button type="button" id="btnTestThermal" class="btn-secondary hidden" onclick="testPrintThermal()" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 14px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  <span>Sinov cheki</span>
+                </button>
+                <button type="button" id="btnDisconnectThermal" class="btn-danger hidden" onclick="disconnectThermalPrinter()" style="padding:10px 14px;display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+                  <span>Uzish</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div id="pwaInstallContainer" class="hidden">
+            <h3 class="settings-group-title">Ilova</h3>
+            <div class="settings-group" style="padding:14px;">
+              <button id="btnInstallApp" class="btn-primary btn-full hidden" onclick="installPWA()" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 16px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
+                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                  <line x1="12" y1="18" x2="12.01" y2="18"/>
+                </svg>
+                Ilovani o'rnatish (PWA)
+              </button>
+            </div>
+          </div>
+
+          <div id="adminSettingsBlock" class="hidden">
+            <h3 class="settings-group-title">Boshqaruv</h3>
+            <div class="settings-group" style="padding:14px;">
+              <button type="button" class="btn-secondary btn-full" onclick="openAdminPanel()" style="padding:11px 16px;">Admin panelni ochish</button>
+            </div>
+          </div>
+
           <h3 class="settings-group-title">Yordam / Qo'llab-quvvatlash</h3>
-          <div class="settings-group" style="display:flex;flex-direction:column;gap:8px;">
+          <div class="settings-group" style="padding:14px;display:flex;flex-direction:column;gap:10px;">
             <a data-support-telegram class="btn-full hidden" href="#" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 20px;border-radius:12px;background:#229ED9;color:#fff;font-weight:700;text-decoration:none;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.05 2.3L2.7 9.4c-1.25.5-1.24 1.2-.22 1.5l4.7 1.47 1.8 5.5c.22.6.4.84 1.1.84.54 0 .78-.25 1.08-.54l2.6-2.53 4.7 3.47c.86.48 1.48.23 1.7-.8l3.08-14.5c.31-1.26-.48-1.83-1.3-1.49zM9.5 13.2L17 8.3c.34-.2.65-.09.4.14l-6.2 5.6-.24 2.6-1.46-3.44z"/></svg>
               Telegram orqali yordam
             </a>
-            <span style="font-size:0.75rem;color:var(--text3);">To'lov, savol yoki texnik muammo bo'yicha murojaat qiling.</span>
+            <span style="font-size:0.78rem;color:var(--text3);line-height:1.4;">To'lov, savol yoki texnik muammo bo'yicha murojaat qiling.</span>
           </div>
-          <h3 class="settings-group-title">Ilova</h3>
-          <div class="settings-group" style="display:flex;flex-direction:column;gap:8px;">
-            <button id="btnInstallApp" class="btn-primary btn-full hidden" onclick="installPWA()" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
-                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-                <line x1="12" y1="18" x2="12.01" y2="18"/>
-              </svg>
-              Ilovani o'rnatish (PWA)
-            </button>
-            <button type="button" class="btn-secondary btn-full" onclick="connectThermalPrinter()" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">
-                <path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
-              </svg>
-              Termal printer ulash (Bluetooth)
-            </button>
-            <span style="font-size:0.75rem;color:var(--text3);">Holat: <b id="thermalPrinterStatus">Ulanmagan</b> · 58mm/80mm ESC/POS printerlar</span>
-          </div>
-          <div id="accountSettingsBlock" class="hidden">
+
+          <button class="btn-primary btn-full" style="margin-top:16px;padding:13px 20px;font-size:0.95rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:8px;"
+            onclick="saveSettings(); showToast('Sozlamalar saqlandi')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Sozlamalarni saqlash
+          </button>
+
+          <div id="accountSettingsBlock" class="hidden" style="margin-top:16px;">
             <h3 class="settings-group-title">Hisob</h3>
-            <div class="settings-group">
-              <button type="button" class="btn-danger btn-full" onclick="handleSignOut()">Hisobdan chiqish</button>
+            <div class="settings-group" style="padding:14px;">
+              <button type="button" class="btn-danger btn-full" onclick="handleSignOut()" style="padding:11px 16px;">Hisobdan chiqish</button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- PAGE: NASIYA DAFTAR -->
+      <!-- PAGE: NASIYA DAFTAR & SODIQLIK -->
       <div id="page-nasiya" class="page">
         <div class="page-header">
           <h2>
@@ -815,35 +1039,74 @@
               <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
               <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
             </svg>
-            Nasiya Daftar
+            Nasiya & Mijozlar
           </h2>
-          <button class="btn-primary btn-sm" onclick="openModal('addDebtorModal')">+ Yangi mijoz</button>
-        </div>
-
-        <!-- Umumiy statistika -->
-        <div class="nasiya-summary">
-          <div class="stat-card nasiya-stat-danger">
-            <div class="stat-num" id="nasiyaTotalDebt">0</div>
-            <div class="stat-label">Jami nasiya (so'm)</div>
-          </div>
-          <div class="stat-card nasiya-stat-warn">
-            <div class="stat-num" id="nasiyaDebtorCount">0</div>
-            <div class="stat-label">Qarzdorlar</div>
-          </div>
-          <div class="stat-card nasiya-stat-ok">
-            <div class="stat-num" id="nasiyaTodayPaid">0</div>
-            <div class="stat-label">Bugun to'landi</div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn-primary btn-sm" id="btnNasiyaAction" onclick="openNewCustomerOrDebtor()">+ Yangi mijoz</button>
           </div>
         </div>
 
-        <!-- Qidiruv -->
-        <div class="search-bar" style="margin:0 0 12px;">
-          <input type="search" id="nasiyaSearch" placeholder="Mijoz ismi yoki telefon..."
-            oninput="filterDebtors(this.value)" />
+        <!-- Nasiya va Sodiqlik Tablari -->
+        <div class="nasiya-tabs-header">
+          <button type="button" class="nasiya-tab-btn active" id="tabNasiyaDebts" onclick="switchNasiyaTab('debts')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            Nasiya daftari
+          </button>
+          <button type="button" class="nasiya-tab-btn" id="tabNasiyaLoyalty" onclick="switchNasiyaTab('loyalty')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Doimiy mijozlar & Bonuslar
+          </button>
         </div>
 
-        <!-- Qarzdorlar ro'yxati -->
-        <div id="debtorList" class="debtor-list"></div>
+        <!-- TAB 1: NASIYA DAFTARI -->
+        <div id="nasiyaDebtsView">
+          <div class="nasiya-summary">
+            <div class="stat-card nasiya-stat-danger">
+              <div class="stat-num" id="nasiyaTotalDebt">0</div>
+              <div class="stat-label">Jami nasiya (so'm)</div>
+            </div>
+            <div class="stat-card nasiya-stat-warn">
+              <div class="stat-num" id="nasiyaDebtorCount">0</div>
+              <div class="stat-label">Qarzdorlar</div>
+            </div>
+            <div class="stat-card nasiya-stat-ok">
+              <div class="stat-num" id="nasiyaTodayPaid">0</div>
+              <div class="stat-label">Bugun to'landi</div>
+            </div>
+          </div>
+
+          <div class="search-bar" style="margin:0 0 12px;">
+            <input type="search" id="nasiyaSearch" placeholder="Mijoz ismi yoki telefon..."
+              oninput="filterDebtors(this.value)" />
+          </div>
+
+          <div id="debtorList" class="debtor-list"></div>
+        </div>
+
+        <!-- TAB 2: SODIQLIK & BONUS TIZIMI -->
+        <div id="nasiyaLoyaltyView" class="hidden">
+          <div class="nasiya-summary">
+            <div class="stat-card" style="background:linear-gradient(135deg,rgba(168,85,247,0.18),rgba(6,182,212,0.18));border-color:rgba(168,85,247,0.3);">
+              <div class="stat-num" id="loyaltyTotalCount" style="color:var(--purple);">0</div>
+              <div class="stat-label">Sodiq mijozlar</div>
+            </div>
+            <div class="stat-card" style="background:linear-gradient(135deg,rgba(34,197,94,0.15),rgba(16,185,129,0.15));border-color:rgba(34,197,94,0.3);">
+              <div class="stat-num" id="loyaltyTotalBonuses" style="color:var(--green);">0</div>
+              <div class="stat-label">Jami bonuslar (so'm)</div>
+            </div>
+            <div class="stat-card" style="background:linear-gradient(135deg,rgba(6,182,212,0.15),rgba(14,165,233,0.15));border-color:rgba(6,182,212,0.3);">
+              <div class="stat-num" id="loyaltyCashbackRateDisplay" style="color:var(--cyan);">2%</div>
+              <div class="stat-label">Keshbek stavkasi</div>
+            </div>
+          </div>
+
+          <div class="search-bar" style="margin:0 0 12px;">
+            <input type="search" id="loyaltySearch" placeholder="Sodiq mijoz qidirish..."
+              oninput="filterLoyaltyCustomers(this.value)" />
+          </div>
+
+          <div id="loyaltyCustomerList" class="loyalty-customer-list"></div>
+        </div>
       </div>
 
     </div>
@@ -930,6 +1193,16 @@
         <div class="form-group">
           <label>Izoh</label>
           <input type="text" id="debtorNote" placeholder="Ixtiyoriy" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>Doimiy chegirma (%)</label>
+            <input type="number" id="debtorDiscount" placeholder="0" min="0" max="100" />
+          </div>
+          <div class="form-group">
+            <label>Bonus balansi (so'm)</label>
+            <input type="number" id="debtorBonus" placeholder="0" min="0" />
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -1225,6 +1498,25 @@
             <input type="tel" id="checkoutNewDebtorPhone" placeholder="Telefon (ixtiyoriy)" style="margin-top:6px;" />
           </div>
         </div>
+
+        <!-- Sodiqlik / Bonusdan to'lash bloki -->
+        <div class="checkout-loyalty-section" id="checkoutLoyaltySection" style="display:none;margin-top:10px;background:var(--bg3);padding:10px 12px;border-radius:12px;border:1px solid var(--border);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-weight:700;font-size:0.82rem;color:var(--text1);" id="checkoutLoyaltyCustName">Mijoz</span>
+            <span style="font-size:0.75rem;color:var(--green);font-weight:700;" id="checkoutLoyaltyBalance">Bonus: 0 so'm</span>
+          </div>
+          <div class="toggle-item" style="padding:0;background:transparent;border:none;">
+            <label style="font-size:0.8rem;cursor:pointer;" for="useBonusToggle">Bonusdan to'lash</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="useBonusToggle" onchange="toggleUseBonus()" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div id="bonusUsedDisplay" style="display:none;margin-top:6px;font-size:0.78rem;color:var(--cyan);font-weight:600;">
+            Bonusdan yechiladi: <b id="bonusUsedAmt">0 so'm</b>
+          </div>
+        </div>
+
         <div class="cash-change-section" id="cashChangeSection">
           <div class="form-group">
             <label>Mijoz berdi (so'm)</label>
@@ -2039,6 +2331,290 @@
   <!-- Receipt Lightbox -->
   <div id="receiptLightbox" class="receipt-lightbox hidden" onclick="closeReceiptLightbox()">
     <img id="receiptLightboxImg" src="" alt="Chek" onclick="event.stopPropagation()" />
+  </div>
+
+  <!-- Smena ochish modali -->
+  <div class="modal-overlay" id="openShiftModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3>Kassa smenasini ochish</h3>
+        <button class="modal-close" onclick="closeModal('openShiftModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Kassir ismi / xodim <span style="color:var(--danger)">*</span></label>
+          <input type="text" id="shiftCashierName" placeholder="Masalan: Dilshod (yoki Kassir 1)" />
+        </div>
+        <div class="form-group">
+          <label>Kassadagi boshlang'ich naqd pul (mayda pul, so'm)</label>
+          <input type="number" id="shiftStartingCash" placeholder="0" min="0" value="0" />
+          <div style="font-size:0.72rem;color:var(--text3);margin-top:4px;">Tongda kassada qoldirilgan qaytim berish uchun mayda pullar</div>
+        </div>
+        <div class="form-group">
+          <label>Izoh (ixtiyoriy)</label>
+          <input type="text" id="shiftOpenNote" placeholder="Masalan: Ertalabki smena" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('openShiftModal')">Bekor qilish</button>
+        <button type="button" class="btn-primary" onclick="submitOpenShift()">Smenani boshlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Smena yopish va Z-hisobot modali -->
+  <div class="modal-overlay" id="closeShiftModal">
+    <div class="modal modal-lg">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3>Smenani yopish (Z-Hisobot)</h3>
+        <button class="modal-close" onclick="closeModal('closeShiftModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="shift-stats-summary" id="closeShiftSummary"></div>
+        <div class="form-group" style="margin-top:14px;">
+          <label style="font-weight:700;">Kassir sanagan haqiqiy naqd pul (so'm) <span style="color:var(--danger)">*</span></label>
+          <input type="number" id="shiftActualCash" placeholder="0" min="0" oninput="calcShiftDiscrepancy()" style="font-size:1.15rem;font-weight:700;" />
+        </div>
+        <div class="shift-diff-box" id="shiftDiffBox" style="margin-top:10px;"></div>
+        <div class="form-group" style="margin-top:10px;">
+          <label>Smena yopilish izohi</label>
+          <input type="text" id="shiftCloseNote" placeholder="Ixtiyoriy" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('closeShiftModal')">Orqaga</button>
+        <button type="button" class="btn-primary" onclick="submitCloseShift()">Smenani yopish va Z-hisobot</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kassa pul harakati (Kirim / Chiqim) modali -->
+  <div class="modal-overlay" id="cashMovementModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3>Kassa pul harakati</h3>
+        <button class="modal-close" onclick="closeModal('cashMovementModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Amaliyot turi</label>
+          <div class="payment-grid" style="grid-template-columns:1fr 1fr;">
+            <button type="button" class="payment-method active" id="cmTypeOut" onclick="selectCashMovementType('out')">Chiqim (Pul olish)</button>
+            <button type="button" class="payment-method" id="cmTypeIn" onclick="selectCashMovementType('in')">Kirim (Pul solish)</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Summa (so'm) <span style="color:var(--danger)">*</span></label>
+          <input type="number" id="cashMovementAmt" placeholder="0" min="0" />
+        </div>
+        <div class="form-group">
+          <label>Sabab / Maqsad <span style="color:var(--danger)">*</span></label>
+          <input type="text" id="cashMovementReason" placeholder="Masalan: Tushlikka, Non puli, Inkassatsiya" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('cashMovementModal')">Bekor qilish</button>
+        <button type="button" class="btn-primary" onclick="submitCashMovement()">Tasdiqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Smena hisoboti (X / Z hisobot) modali -->
+  <div class="modal-overlay" id="shiftReportModal">
+    <div class="modal modal-lg">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3 id="shiftReportModalTitle">Smena hisoboti</h3>
+        <button class="modal-close" onclick="closeModal('shiftReportModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="receipt-preview shift-receipt-paper" id="shiftReportPaper"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('shiftReportModal')">Yopish</button>
+        <button type="button" class="btn-primary" onclick="printActiveShiftReport()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Chop etish
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mijoz tanlash modali -->
+  <div class="modal-overlay" id="selectCustomerModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3>Mijoz tanlash</h3>
+        <button class="modal-close" onclick="closeModal('selectCustomerModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="search-bar" style="margin:0 0 10px;">
+          <input type="search" id="customerSearchInput" placeholder="Ism yoki telefon raqami..." oninput="filterCustomerSelectList(this.value)" />
+        </div>
+        <div class="customer-select-list" id="customerSelectList" style="max-height:45vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
+      <div class="modal-footer" style="justify-content:space-between;">
+        <button type="button" class="btn-secondary" onclick="openNewCustomerFromSelect()">+ Yangi mijoz</button>
+        <button type="button" class="btn-secondary" onclick="closeModal('selectCustomerModal')">Yopish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bonus / Chegirma tahrirlash modali -->
+  <div class="modal-overlay" id="adjustBonusModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3>Mijoz sodiqligi & Bonus</h3>
+        <button class="modal-close" onclick="closeModal('adjustBonusModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="adjustBonusCustomerId" />
+        <div style="font-weight:700;font-size:0.95rem;margin-bottom:10px;" id="adjustBonusCustomerName">—</div>
+        <div class="form-group">
+          <label>Doimiy shaxsiy chegirma (%)</label>
+          <input type="number" id="adjustDiscountPct" placeholder="0" min="0" max="100" />
+          <div style="font-size:0.72rem;color:var(--text3);margin-top:3px;">Har bir savatda avtomatik qo'llaniladi (masalan: 3% yoki 5%)</div>
+        </div>
+        <div class="form-group">
+          <label>Bonus (Keshbek) balansi (so'm)</label>
+          <input type="number" id="adjustCashbackBal" placeholder="0" min="0" />
+          <div style="font-size:0.72rem;color:var(--text3);margin-top:3px;">Mijozning to'plangan bonus summasi</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('adjustBonusModal')">Bekor qilish</button>
+        <button type="button" class="btn-primary" onclick="saveAdjustBonus()">Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Vision Modal -->
+  <div class="modal-overlay" id="aiVisionModal">
+    <div class="modal modal-lg">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="ai-sparkle-pill">AI Vision</span>
+          <h3 style="margin:0;">Kameradan tovarni aniqlash</h3>
+        </div>
+        <button class="modal-close" onclick="closeAIVisionModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="ai-vision-camera-box">
+          <video id="aiVisionVideo" autoplay playsinline muted></video>
+          <canvas id="aiVisionCanvas" style="display:none;"></canvas>
+          <div class="ai-vision-overlay" id="aiVisionOverlay">
+            <div class="ai-vision-target"></div>
+            <div class="ai-vision-beam" id="aiVisionBeam"></div>
+            <div class="ai-vision-status-chip" id="aiVisionStatusChip">Tovarni ramkaga qarating</div>
+          </div>
+        </div>
+        <div class="ai-vision-action-bar">
+          <button type="button" class="btn-primary" onclick="captureAndAnalyzeVision()" id="btnCaptureVision">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+            Suratga olib tahlil qilish
+          </button>
+          <label class="btn-secondary" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+            <input type="file" accept="image/*" onchange="handleVisionImageUpload(this)" style="display:none;" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Rasm yuklash
+          </label>
+        </div>
+        <div class="ai-vision-results" id="aiVisionResults">
+          <div style="text-align:center;padding:16px;color:var(--text3);font-size:0.85rem;">
+            Tovarni kamera oldiga olib kelib, "Suratga olib tahlil qilish" tugmasini bosing
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeAIVisionModal()">Yopish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Telegram Onlayn Buyurtmalar Modali -->
+  <div class="modal-overlay" id="onlineOrdersModal">
+    <div class="modal modal-lg">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="online-tag-pill">Telegram O2O</span>
+          <h3 style="margin:0;">Onlayn buyurtmalar</h3>
+        </div>
+        <button class="modal-close" onclick="closeModal('onlineOrdersModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="online-orders-topbar">
+          <div style="font-size:0.82rem;color:var(--text2);">
+            Mijozlaringiz uydan turib Telegram Mini App orqali yuborgan buyurtmalari
+          </div>
+          <button type="button" class="btn-secondary btn-xs" onclick="simulateOnlineOrder()" title="Sinov uchun sun'iy buyurtma yuborish">
+            + Sinov buyurtmasi
+          </button>
+        </div>
+        <div id="onlineOrdersList" class="online-orders-list" style="margin-top:12px;"></div>
+      </div>
+      <div class="modal-footer" style="justify-content:space-between;">
+        <button type="button" class="btn-secondary" onclick="openTelegramStoreModal()">Telegram do'kon havolasi</button>
+        <button type="button" class="btn-secondary" onclick="closeModal('onlineOrdersModal')">Yopish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Telegram Mini App Do'kon Modali -->
+  <div class="modal-overlay" id="telegramStoreModal">
+    <div class="modal">
+      <div class="modal-drag-handle"></div>
+      <div class="modal-header">
+        <h3>Telegram Mini App Do'kon</h3>
+        <button class="modal-close" onclick="closeModal('telegramStoreModal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" style="text-align:center;">
+        <div style="width:70px;height:70px;border-radius:18px;background:rgba(34,158,217,0.15);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="#229ED9"><path d="M21.05 2.3L2.7 9.4c-1.25.5-1.24 1.2-.22 1.5l4.7 1.47 1.8 5.5c.22.6.4.84 1.1.84.54 0 .78-.25 1.08-.54l2.6-2.53 4.7 3.47c.86.48 1.48.23 1.7-.8l3.08-14.5c.31-1.26-.48-1.83-1.3-1.49zM9.5 13.2L17 8.3c.34-.2.65-.09.4.14l-6.2 5.6-.24 2.6-1.46-3.44z"/></svg>
+        </div>
+        <h4 style="font-size:1.15rem;margin-bottom:6px;">Do'koningiz Telegramda jonli!</h4>
+        <p style="font-size:0.85rem;color:var(--text2);margin-bottom:16px;">
+          Assortiment, narxlar va qoldiqlar to'g'ridan-to'g'ri kassangiz bilan sinxronlashadi. Mijozlar havola orqali buyurtma berishlari mumkin.
+        </p>
+        <div style="background:#fff;padding:12px;border-radius:12px;display:inline-block;margin-bottom:16px;">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://t.me/ScanPOS_Store_Bot" alt="QR" style="width:140px;height:140px;display:block;" />
+        </div>
+        <div class="form-group">
+          <label>Do'kon havolasi (Telegram Bot / Mini App)</label>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="telegramStoreUrlInput" value="https://t.me/ScanPOS_Store_Bot?start=shop" readonly style="font-family:monospace;font-size:0.82rem;" />
+            <button type="button" class="btn-primary btn-sm" onclick="copyTelegramStoreUrl()">Nusxa</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('telegramStoreModal')">Yopish</button>
+      </div>
+    </div>
   </div>
 
   <!-- Toast -->
