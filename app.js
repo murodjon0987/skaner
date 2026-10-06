@@ -1413,12 +1413,12 @@ function copyPaymentCard() {
 
 // Telegram "Yordam / Qo'llab-quvvatlash" havolalarini barcha joyga o'rnatadi.
 function renderSupportLinks() {
-	const url = (PAYMENT_INFO.supportTelegram || '').trim();
+	const url = ((typeof window !== 'undefined' && window.SCANPOS_PAYMENT && window.SCANPOS_PAYMENT.supportTelegram) || PAYMENT_INFO.supportTelegram || '').trim();
 	document.querySelectorAll('[data-support-telegram]').forEach(el => {
 		if (url) {
 			el.href = url;
 			el.classList.remove('hidden');
-			el.style.display = 'inline-flex';
+			el.style.display = el.classList.contains('pay-method') ? 'flex' : 'inline-flex';
 		} else {
 			el.classList.add('hidden');
 			el.style.display = 'none';
@@ -4310,7 +4310,7 @@ function editProductById(productId) {
 function updateProductStats() {
  const countEl = document.getElementById('totalProductsCount');
  if (countEl) countEl.textContent = APP.products.length;
- const totalVal = APP.products.reduce((s, p) => s + (p.price * (p.stock || 0)), 0);
+ const totalVal = APP.products.reduce((s, p) => s + (p.price * (parseFloat(p.stock) || 0)), 0);
  const valEl = document.getElementById('totalStockValue');
  if (valEl) valEl.textContent = formatPriceShort(totalVal);
 
